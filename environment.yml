@@ -1,0 +1,9 @@
+name: traffic4cast
+dependencies:
+    - python=3.6
+    - pytorch>=1.0
+    - torchvision
+    - cudatoolkit=9.0
+    - numpy
+    - h5py
+    - matplotlib
