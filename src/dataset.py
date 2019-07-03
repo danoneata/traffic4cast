@@ -43,14 +43,14 @@ class Traffic4CastDataset(torch.utils.data.Dataset):
     """ Implementation of the pytorch Dataset. """
 
     def __init__(self,
-                 root_dir: str,
+                 root: str,
                  phase: str,
                  cities: List[str] = ["Berlin", "Istanbul", "Moscow"],
                  transform: List[Callable] = []):
         """ Initializes the Traffic4CastDataset.
 
         Args:
-            root_dir (string): Path to the root data directory.
+            root (string): Path to the root data directory.
             phase (string): One of: 'training', 'test', 'validation'. Used to
                 select between the data splits.
             cities ([string]): Name of the cities to use. Defaults to:
@@ -62,18 +62,18 @@ class Traffic4CastDataset(torch.utils.data.Dataset):
         self.transforms = transform
         self.files = {
             city: [
-                f"{root_dir}/{city}/{city}_{phase}/{file}"
+                f"{root}/{city}/{city}_{phase}/{file}"
                 for file in sorted(
-                    os.listdir(f"{root_dir}/{city}/{city}_{phase}/"))
+                    os.listdir(f"{root}/{city}/{city}_{phase}/"))
             ]
             for city in cities
         }
 
-        self.len = sum([len(files) for city, files in self.files.items()])
+        self.size = sum([len(files) for city, files in self.files.items()])
 
     def __len__(self):
         """ Gets length of the dataset. """
-        return self.len
+        return self.size
 
     def __getitem__(self, idx: int):
         for city, files in self.files.items():
