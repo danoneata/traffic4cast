@@ -8,7 +8,7 @@ import torch
 import torch.utils.data
 
 
-class Traffic4CastSmaple(object):
+class Traffic4CastSample(object):
     """ Traffic4cast data wrapper.
 
         Attributes:
@@ -18,12 +18,12 @@ class Traffic4CastSmaple(object):
             date (datetime): Date when the data sample was collected.
     """
 
-    def __init__(self, city: str, path: str):
-        """ Initializes the Traffic4CastSmaple data sample
+    def __init__(self, path: str, city: str):
+        """ Initializes the Traffic4CastSample data sample
 
             Args:
-                city: Name of they city where the data sample was collected.
                 path: Path to the .hdf5 data file.
+                city: Name of they city where the data sample was collected.
         """
 
         self.path = path
@@ -63,10 +63,8 @@ class Traffic4CastDataset(torch.utils.data.Dataset):
         self.files = {
             city: [
                 f"{root}/{city}/{city}_{phase}/{file}"
-                for file in sorted(
-                    os.listdir(f"{root}/{city}/{city}_{phase}/"))
-            ]
-            for city in cities
+                for file in sorted(os.listdir(f"{root}/{city}/{city}_{phase}/"))
+            ] for city in cities
         }
 
         self.size = sum([len(files) for city, files in self.files.items()])
@@ -80,7 +78,7 @@ class Traffic4CastDataset(torch.utils.data.Dataset):
             if idx >= len(files):
                 idx = idx - len(files)
             else:
-                stream = Traffic4CastSmaple(city, files[idx])
+                stream = Traffic4CastSample(files[idx], city)
                 stream.load()
                 break
 
@@ -90,15 +88,15 @@ class Traffic4CastDataset(torch.utils.data.Dataset):
         return stream
 
     @classmethod
-    def collate_list(cls, samples_list: List[Traffic4CastSmaple]
-                    ) -> List[Traffic4CastSmaple]:
-        """ Collates a list of Traffic4CastSmaple.
+    def collate_list(cls, samples_list: List[Traffic4CastSample]
+                    ) -> List[Traffic4CastSample]:
+        """ Collates a list of Traffic4CastSample.
 
             Args:
-                samples_list: List of Traffic4CastSmaple samples.
+                samples_list: List of Traffic4CastSample samples.
 
             Return:
-                List[Traffic4CastSmaple]
+                List[Traffic4CastSample]
         """
 
         return samples_list
