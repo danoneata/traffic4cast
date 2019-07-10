@@ -4,9 +4,9 @@ Traffic4Cast code conforms to [Google Python Style Guide](http://google.github.i
 ## Code formatter.
 For code formating [yapf](https://github.com/google/yapf) is used to enforce
 the chosen coding style.
-Please run **yapf** on your files with `--style google` flag.
+Please run **yapf** on your files with `--style google` flag and `-i`(inplace).
 ```bash
-yapf --style google --no-local-style src/dataset.py
+yapf --style google --no-local-style -i src/dataset.py
 ```
 For **vim**/**neovim** users, both [yapf](https://github.com/google/yapf/tree/master/plugins)
 and [Google Python Style Guide](http://google.github.io/styleguide/google_python_style.vim)
@@ -25,12 +25,17 @@ pytype-single src/dataset.py
 ## Pylint
 [Pylint](https://www.pylint.org/) usage is encouragend.
 
+# Commit style.
+Commits should be small and to the point. Commit often.
+[Here](https://chris.beams.io/posts/git-commit/#seven-rules) are some good rules
+for commit messages that everyone must strive to follow.
+
 # Pull requests (PRs)
 All contributions must have an associated PR with at least one reviewer. Please
 not that our gitlab server does not support adding reviewers. The work around
 is to indicate the reviewer(s) with @. In order to merge all discussions must
 be resolved and the reviers(s) must mark with LGTM (looks good to me) for
-acceptance.
+acceptance.(Some heretics...cough, GitLab, cough...calls them MergeRequests)
 
 **Note: Any member can review and it is encouraged to do so.**
 
