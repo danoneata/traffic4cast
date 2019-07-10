@@ -17,6 +17,8 @@ class Traffic4CastSample(object):
             city (str): City where data sample was collected.
             date (datetime): Date when the data sample was collected.
     """
+    time_step_delta = datetime.timedelta(minutes=5)
+    channel_label = {0: "Volume", 1: "Speed", 2: "Heading"}
 
     def __init__(self, path: str, city: str):
         """ Initializes the Traffic4CastSample data sample
@@ -45,8 +47,8 @@ class Traffic4CastDataset(torch.utils.data.Dataset):
     def __init__(self,
                  root: str,
                  phase: str,
-                 cities: List[str] = ["Berlin", "Istanbul", "Moscow"],
-                 transform: List[Callable] = []):
+                 cities: List[str] = None,
+                 transform: List[Callable] = None):
         """ Initializes the Traffic4CastDataset.
 
         Args:
@@ -59,7 +61,10 @@ class Traffic4CastDataset(torch.utils.data.Dataset):
                 sample.
         """
 
-        self.transforms = transform
+        self.transforms = [] if transform is None else transform
+
+        if cities is None:
+            cities = ["Berlin", "Istanbul", "Moscow"]
         self.files = {
             city: [
                 f"{root}/{city}/{city}_{phase}/{file}"
