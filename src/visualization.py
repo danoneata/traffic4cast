@@ -28,9 +28,15 @@ def movie(sample: dataset.Traffic4CastSample,
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
         ax1.set_title("Volume")
         ax2.set_title("Speed")
-        ax3.set_title("Heading. UNEWS = WRGBY")
+        ax3.set_title("Heading.")
+        cardinal_color = [('N/A', 'white'), ('N', 'red'), ('E', 'green'),
+                          ('W', 'blue'), ('S', 'yellow')]
         direction_cmap = colors.ListedColormap(
-            ['white', 'red', 'green', 'blue', 'yellow'])
+            [color for _, color in cardinal_color])
+        heading_legend = [
+            lines.Line2D([0], [0], color=color, label=cardinal)
+            for cardinal, color in cardinal_color
+        ]
     else:
         fig, ax1 = plt.subplots(1, 1)
 
@@ -40,33 +46,27 @@ def movie(sample: dataset.Traffic4CastSample,
         mng = plt.get_current_fig_manager()
         mng.window.showMaximized()
 
-    time_step = dataset.Traffic4CastSample.time_step_delta
-    time_stamp_box = dict(boxstyle="round", color=(1., 0.5, 0.5))
-    time_stamp_pos = (0, 20)
     frames = []
     for frame in range(sample.data.shape[0]):
+        time_legend = [
+            lines.Line2D(
+                [0], [0],
+                label=f"{dataset.Traffic4CastSample.time_step_delta*frame}")
+        ]
         if split_channels:
             direction = remap_heading(sample.data[frame, :, :, 2])
             frames.append([
                 ax1.imshow(sample.data[frame, :, :, 0], cmap='Reds'),
-                ax1.text(*time_stamp_pos,
-                         f"{time_step*frame}",
-                         bbox=time_stamp_box),
+                ax1.legend(handles=time_legend),
                 ax2.imshow(sample.data[frame, :, :, 1], cmap='Greens'),
-                ax2.text(*time_stamp_pos,
-                         f"{time_step*frame}",
-                         bbox=time_stamp_box),
+                ax2.legend(handles=time_legend),
                 ax3.imshow(direction, cmap=direction_cmap),
-                ax3.text(*time_stamp_pos,
-                         f"{time_step*frame}",
-                         bbox=time_stamp_box),
+                ax3.legend(handles=time_legend + heading_legend),
             ])
         else:
             frames.append([
                 ax1.imshow(sample.data[frame]),
-                ax1.text(*time_stamp_pos,
-                         f"{time_step*frame}",
-                         bbox=time_stamp_box)
+                ax1.legend(handles=time_legend),
             ])
 
     animation.ArtistAnimation(fig,
