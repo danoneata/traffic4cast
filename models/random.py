@@ -1,6 +1,8 @@
 import numpy as np
 
+
 class Random:
+
     def __init__(self, city):
         pass
 

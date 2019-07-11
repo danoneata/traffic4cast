@@ -97,8 +97,10 @@ def main():
     cached_predict = lambda path, *args: cache(path)(model.predict)(*args)
 
     get_path_gt = partial(get_path, ROOT, args.city, args.split)
+
     def get_path_pr(date):
-        dirname = os.path.join("output", "predictions", args.model, args.city, args.split)
+        dirname = os.path.join("output", "predictions", args.model, args.city,
+                               args.split)
         filename = date.strftime('%Y-%m-%d_%H-%M') + "_n-frames-3.npy"
         os.makedirs(dirname, exist_ok=True)
         return os.path.join(dirname, filename)
@@ -114,7 +116,8 @@ def main():
             errors.append(sq_err)
 
             if args.verbose:
-                print(date, "| 3 frames |", " | ".join(f"{e:7.2f}" for e in sq_err))
+                print(date, "| 3 frames |",
+                      " | ".join(f"{e:7.2f}" for e in sq_err))
 
         table = [np.vstack(errors).mean(axis=0).tolist()]
         print(tabulate(table, headers=CHANNELS, tablefmt="github"))

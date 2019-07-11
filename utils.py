@@ -2,12 +2,13 @@ from datetime import datetime, timedelta
 
 import numpy as np
 
-
 FRAME_DURATION = 5  # minutes
 
 
 def cache(path):
+
     def wrapped(func):
+
         def f(*args):
             try:
                 return np.load(path)
