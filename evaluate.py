@@ -25,7 +25,6 @@ CITIES = ["Berlin", "Istanbul", "Moscow"]
 
 START_FRAMES = [30, 69, 126, 186, 234]
 FRAMES_TO_PREDICT = [s + d for s in START_FRAMES for d in range(4)]
-FRAME_DURATION = 5  # minutes
 
 
 def get_path(root, city, phase, date):
