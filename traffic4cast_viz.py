@@ -92,12 +92,8 @@ def create_arg_parsers() -> argparse.ArgumentParser:
         subparsers.add_parser('target',
                               help='display graphs for a target location')
     target_parser.add_argument("input", help="path of the *.hdf5 file")
-    target_parser.add_argument("x",
-                               help="x coordinate",
-                               type=int)
-    target_parser.add_argument("y",
-                               help="y coordinate",
-                               type=int)
+    target_parser.add_argument("x", help="x coordinate", type=int)
+    target_parser.add_argument("y", help="y coordinate", type=int)
     target_parser.add_argument("--city",
                                help="name of the city for display purposes",
                                default="Unknown")
