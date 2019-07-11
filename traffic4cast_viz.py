@@ -39,6 +39,18 @@ def dsipatch_hist(args: argparse.Namespace):
     viz.hist(sample, time_locations)
 
 
+def dispatch_target(args: argparse.Namespace):
+    """ Execute "target" sub-command
+
+        Args:
+            args: Command line arguments.
+    """
+    sample = dataset.Traffic4CastSample(args.input, args.city)
+    sample.load()
+
+    viz.target(sample, args.target_position)
+
+
 def create_arg_parsers() -> argparse.ArgumentParser:
     """ Creates and argument parser for the traffic4cast_viz module
 
