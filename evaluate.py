@@ -18,10 +18,9 @@ from utils import (
     day_frame_to_date,
 )
 
-
 CITIES = ["Berlin", "Istanbul", "Moscow"]
 
-START_FRAMES = [30, 69, 126, 186, 234] 
+START_FRAMES = [30, 69, 126, 186, 234]
 FRAMES_TO_PREDICT = [s + d for s in START_FRAMES for d in range(4)]
 FRAME_DURATION = 5  # minutes
 
@@ -31,11 +30,13 @@ def get_path(root, city, phase, date):
     return f"{root}/{city}/{city}_{phase}/{filename}"
 
 
-def load_groundtruth(get_path: Callable[datetime, str], date: datetime, n_frames: int=1) -> np.ndarray:
+def load_groundtruth(get_path: Callable[datetime, str],
+                     date: datetime,
+                     n_frames: int = 1) -> np.ndarray:
     """Size of return (F, H, W, C)"""
     day, frame = date_to_day_frame(date)
     data = np.array(h5py.File(get_path(date), 'r')['array'])
-    return data[frame: frame + n_frames]
+    return data[frame:frame + n_frames]
 
 
 def predict(model, date, n_frames=1):
@@ -83,7 +84,9 @@ def main():
         print(args)
 
     days = get_days("data", args.city, args.split)
-    dates = [day_frame_to_date(day, frame) for day in days for frame in START_FRAMES]
+    dates = [
+        day_frame_to_date(day, frame) for day in days for frame in START_FRAMES
+    ]
 
     # model = load_model(args.model, city=args.city)
     model = None
@@ -96,7 +99,8 @@ def main():
         for date in dates:
             groundtruth = load_groundtruth(get_path1, date, n_frames=3)
             prediction = cached_predict("/tmp/o.npy", model, date)
-            squared_error = np.mean((groundtruth - prediction) ** 2, axis=(0, 1, 2))
+            squared_error = np.mean((groundtruth - prediction)**2,
+                                    axis=(0, 1, 2))
             errors.append(squared_error)
             if args.verbose:
                 print(date, squared_error)
