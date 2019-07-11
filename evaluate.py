@@ -20,6 +20,7 @@ from utils import (
     day_frame_to_date,
 )
 
+ROOT = os.environ.get("ROOT", "data")
 CHANNELS = ["volume", "speed", "heading"]
 CITIES = ["Berlin", "Istanbul", "Moscow"]
 
@@ -85,7 +86,7 @@ def main():
     if args.verbose:
         print(args)
 
-    days = get_days("data", args.city, args.split)
+    days = get_days(ROOT, args.city, args.split)
     dates = [
         day_frame_to_date(day, frame) for day in days for frame in START_FRAMES
     ]
@@ -94,7 +95,7 @@ def main():
     model = None
     cached_predict = lambda path, *args: cache(path)(predict)(*args)
 
-    get_path_gt = partial(get_path, "data", args.city, args.split)
+    get_path_gt = partial(get_path, ROOT, args.city, args.split)
     def get_path_pr(date):
         dirname = os.path.join("output", "predictions", args.city, args.split)
         filename = date.strftime('%Y-%m-%d_%H-%M') + "_n-frames-3.npy"
