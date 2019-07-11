@@ -2,15 +2,15 @@ import argparse
 import os
 import pdb
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from functools import partial
+
+from typing import Callable, List
 
 import h5py
 
 import numpy as np
-
-from typing import Callable, List
 
 from tabulate import tabulate
 
@@ -40,7 +40,7 @@ def load_groundtruth(get_path: Callable[[datetime], str],
                      n_frames: int = 1) -> np.ndarray:
     """Size of return (F, H, W, C)"""
     day, frame = date_to_day_frame(date)
-    data = np.array(h5py.File(get_path(date), 'r')['array'])
+    data = np.array(h5py.File(get_path(day), 'r')['array'])
     return data[frame:frame + n_frames]
 
 
@@ -124,7 +124,7 @@ def main():
 
     elif args.split == "testing":
         for date in dates:
-            cached_predict(get_path_pred, model, date)
+            cached_predict(get_path_pr, model, date)
 
 
 if __name__ == "__main__":
