@@ -12,12 +12,15 @@ import numpy as np
 
 from typing import Callable, List
 
+from tabulate import tabulate
+
 from utils import (
     cache,
     date_to_day_frame,
     day_frame_to_date,
 )
 
+CHANNELS = ["volume", "speed", "heading"]
 CITIES = ["Berlin", "Istanbul", "Moscow"]
 
 START_FRAMES = [30, 69, 126, 186, 234]
@@ -103,8 +106,12 @@ def main():
                                     axis=(0, 1, 2))
             errors.append(squared_error)
             if args.verbose:
-                print(date, squared_error)
-        # print table -- markdown
+                print(date, "| 3 frames |", " | ".join(f"{e:7.2f}" for e in sq_err))
+            break
+
+        table = [np.vstack(errors).mean(axis=0).tolist()]
+        print(tabulate(table, headers=CHANNELS, tablefmt="github"))
+
     elif args.split == "testing":
         for date in dates:
             cached_predict(path, model, date)
