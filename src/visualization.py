@@ -161,3 +161,16 @@ def hist(sample: dataset.Traffic4CastSample,
         axes[point * 3 + 2].set_xticklabels(['U', 'N', 'E', 'W', 'S'])
 
     plt.show()
+
+
+def target(sample: dataset.Traffic4CastSample,
+           target_position: (int, int)) -> None:
+    """ Displays graphs for Volume, Speed, Heading for a target location in
+        regards to time, for the entire sample
+
+        Args:
+            sample: The Traffic4CastSample
+            target_position: tuple with 2 ints that represents the target
+                position
+    """
+    pass
