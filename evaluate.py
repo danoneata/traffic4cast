@@ -94,16 +94,22 @@ def main():
     model = None
     cached_predict = lambda path, *args: cache(path)(predict)(*args)
 
+    get_path_gt = partial(get_path, "data", args.city, args.split)
+    def get_path_pr(date):
+        dirname = os.path.join("output", "predictions", args.city, args.split)
+        filename = date.strftime('%Y-%m-%d_%H-%M') + "_n-frames-3.npy"
+        os.makedirs(dirname, exist_ok=True)
+        return os.path.join(dirname, filename)
+
     if args.split == "validation":
-        get_path1 = partial(get_path, "data", args.city, args.split)
-        # get_path2 = partial(get_path, "pred", args.city, args.split)
+
         errors = []
+
         for date in dates:
-            groundtruth = load_groundtruth(get_path1, date, n_frames=3)
-            prediction = cached_predict("/tmp/o.npy", model, date)
-            squared_error = np.mean((groundtruth - prediction)**2,
-                                    axis=(0, 1, 2))
-            errors.append(squared_error)
+            gt = load_groundtruth(get_path_gt, date, n_frames=3)
+            pr = cached_predict(get_path_pr(date), model, date)
+            sq_err = np.mean((gt - pr)**2, axis=(0, 1, 2))
+            errors.append(sq_err)
             if args.verbose:
                 print(date, "| 3 frames |", " | ".join(f"{e:7.2f}" for e in sq_err))
             break
@@ -112,8 +118,9 @@ def main():
         print(tabulate(table, headers=CHANNELS, tablefmt="github"))
 
     elif args.split == "testing":
+
         for date in dates:
-            cached_predict(path, model, date)
+            cached_predict(get_path_pred, model, date)
 
 
 if __name__ == "__main__":
