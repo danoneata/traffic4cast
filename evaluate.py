@@ -113,7 +113,6 @@ def main():
             errors.append(sq_err)
             if args.verbose:
                 print(date, "| 3 frames |", " | ".join(f"{e:7.2f}" for e in sq_err))
-            break
 
         table = [np.vstack(errors).mean(axis=0).tolist()]
         print(tabulate(table, headers=CHANNELS, tablefmt="github"))
