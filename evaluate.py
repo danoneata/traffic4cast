@@ -32,7 +32,7 @@ def get_path(root, city, phase, date):
     return f"{root}/{city}/{city}_{phase}/{filename}"
 
 
-def load_groundtruth(get_path: Callable[datetime, str],
+def load_groundtruth(get_path: Callable[[datetime], str],
                      date: datetime,
                      n_frames: int = 1) -> np.ndarray:
     """Size of return (F, H, W, C)"""
