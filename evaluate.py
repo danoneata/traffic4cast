@@ -14,6 +14,8 @@ from typing import Callable, List
 
 from tabulate import tabulate
 
+from models import MODELS
+
 from utils import (
     cache,
     date_to_day_frame,
@@ -42,12 +44,7 @@ def load_groundtruth(get_path: Callable[[datetime], str],
     return data[frame:frame + n_frames]
 
 
-def predict(model, date, n_frames=1):
-    H, W, C = 495, 436, 3
-    return np.random.randn(n_frames, H, W, C)
-
-
-def path_to_date(path):
+def path_to_date(path: str) -> datetime:
     return datetime.strptime(os.path.basename(path).split('_')[0], '%Y%m%d')
 
 
@@ -63,6 +60,7 @@ def main():
                         "--model",
                         type=str,
                         required=True,
+                        choices=MODELS,
                         help="which model to use")
     parser.add_argument("-s",
                         "--split",
@@ -91,26 +89,30 @@ def main():
         day_frame_to_date(day, frame) for day in days for frame in START_FRAMES
     ]
 
-    # model = load_model(args.model, city=args.city)
-    model = None
-    cached_predict = lambda path, *args: cache(path)(predict)(*args)
+    Model = MODELS[args.model]
+    model = Model(city=args.city)
+    # TODO Load model
+
+    # Cache predictions to a specified path
+    cached_predict = lambda path, *args: cache(path)(model.predict)(*args)
 
     get_path_gt = partial(get_path, ROOT, args.city, args.split)
     def get_path_pr(date):
-        dirname = os.path.join("output", "predictions", args.city, args.split)
+        dirname = os.path.join("output", "predictions", args.model, args.city, args.split)
         filename = date.strftime('%Y-%m-%d_%H-%M') + "_n-frames-3.npy"
         os.makedirs(dirname, exist_ok=True)
         return os.path.join(dirname, filename)
 
     if args.split == "validation":
-
         errors = []
-
         for date in dates:
+
             gt = load_groundtruth(get_path_gt, date, n_frames=3)
-            pr = cached_predict(get_path_pr(date), model, date)
+            pr = cached_predict(get_path_pr(date), date, 3)
+
             sq_err = np.mean((gt - pr)**2, axis=(0, 1, 2))
             errors.append(sq_err)
+
             if args.verbose:
                 print(date, "| 3 frames |", " | ".join(f"{e:7.2f}" for e in sq_err))
 
@@ -118,7 +120,6 @@ def main():
         print(tabulate(table, headers=CHANNELS, tablefmt="github"))
 
     elif args.split == "testing":
-
         for date in dates:
             cached_predict(get_path_pred, model, date)
 
