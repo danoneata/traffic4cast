@@ -173,14 +173,14 @@ def target(sample: dataset.Traffic4CastSample,
             target_position: tuple with 2 ints that represents the target
                 position
     """
-    volumes = sample.data[:, target_position[0], target_position[1], 0]
-    speeds = sample.data[:, target_position[0], target_position[1], 1]
-    headings = map(remap_heading,
-                   sample.data[:, target_position[0], target_position[1], 2])
+    volumes = sample.data[:, target_position[0], target_position[1], 0].numpy()
+    speeds = sample.data[:, target_position[0], target_position[1], 1].numpy()
+    headings = remap_heading(
+        sample.data[:, target_position[0], target_position[1], 2]).numpy()
 
-    timings = map(
+    timings = list(map(
         lambda frame: sample.date + datetime.timedelta(minutes=frame * 5),
-        range(sample.data.shape[0]))
+        range(sample.data.shape[0])))
 
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1)
     plt.xlabel('time')
