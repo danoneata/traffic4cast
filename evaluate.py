@@ -71,7 +71,8 @@ def main():
     def get_path_pr(date):
         dirname = os.path.join("output", "predictions", args.model, args.city,
                                args.split)
-        filename = date.strftime('%Y-%m-%d_%H-%M') + f"_n-frames-{NR_FRAMES}.npy"
+        filename = (date.strftime('%Y-%m-%d_%H-%M') +
+                    f"_n-frames-{NR_FRAMES}.npy")
         os.makedirs(dirname, exist_ok=True)
         return os.path.join(dirname, filename)
 
@@ -84,7 +85,7 @@ def main():
             sample = dataset[i]
             date = day_frame_to_date(sample.date, frame)
 
-            gt = dataset[i].data[frame: frame + NR_FRAMES].numpy()
+            gt = dataset[i].data[frame:frame + NR_FRAMES].numpy()
             pr = cached_predict(get_path_pr(date), date, NR_FRAMES)
 
             sq_err = np.mean((gt - pr)**2, axis=(0, 1, 2))
