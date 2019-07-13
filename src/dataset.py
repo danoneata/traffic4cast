@@ -8,6 +8,10 @@ import torch
 import torch.utils.data
 
 
+def path_to_date(path: str) -> datetime.datetime:
+    return datetime.datetime.strptime(os.path.basename(path).split('_')[0], '%Y%m%d')
+
+
 class Traffic4CastSample(object):
     """ Traffic4cast data wrapper.
 
@@ -31,8 +35,7 @@ class Traffic4CastSample(object):
         self.path = path
         self.data = None
         self.city = city
-        self.date = datetime.datetime.strptime(
-            os.path.basename(path).split('_')[0], '%Y%m%d')
+        self.date = path_to_date(path)
 
     def load(self):
         """ Load the data sample in the .hdf5 file """
