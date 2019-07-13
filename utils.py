@@ -5,21 +5,13 @@ import numpy as np
 FRAME_DURATION = 5  # minutes
 
 
-def cache(path):
-
-    def wrapped(func):
-
-        def f(*args):
-            try:
-                return np.load(path)
-            except FileNotFoundError:
-                result = func(*args)
-                np.save(path, result)
-                return result
-
-        return f
-
-    return wrapped
+def cache(func, path, *args, **kwargs):
+    try:
+        return np.load(path)
+    except FileNotFoundError:
+        result = func(*args, **kwargs)
+        np.save(path, result)
+        return result
 
 
 def day_frame_to_date(day: datetime, frame: int) -> datetime:

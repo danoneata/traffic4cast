@@ -66,7 +66,7 @@ def main():
     nr_days = len(dataset)
 
     # Cache predictions to a specified path
-    cached_predict = lambda path, *args: cache(path)(model.predict)(*args)
+    cached_predict = lambda path, *args: cache(model.predict, path, *args)
 
     def get_path_pr(date):
         dirname = os.path.join("output", "predictions", args.model, args.city,
