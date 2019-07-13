@@ -15,14 +15,12 @@ def cache(func, path, *args, **kwargs):
 
 
 def day_frame_to_date(day: datetime, frame: int) -> datetime:
-    # day_frame_to_date . date_to_day_frame = id
-    # date_to_day_frame . day_frame_to_date = id
+    # This function is the inverse of `date_to_day_frame`
     return day + timedelta(minutes=frame * FRAME_DURATION)
 
 
 def date_to_day_frame(date: datetime) -> (datetime, int):
-    # day_frame_to_date . date_to_day_frame = id
-    # date_to_day_frame . day_frame_to_date = id
+    # This function is the inverse of `day_frame_to_date`
     day = date.replace(hour=0, minute=0)
     frame = (date - day).seconds // 300
     return day, frame
