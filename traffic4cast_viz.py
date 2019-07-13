@@ -39,6 +39,18 @@ def dsipatch_hist(args: argparse.Namespace):
     viz.hist(sample, time_locations)
 
 
+def dispatch_target(args: argparse.Namespace):
+    """ Execute "target" sub-command
+
+        Args:
+            args: Command line arguments.
+    """
+    sample = dataset.Traffic4CastSample(args.input, args.city)
+    sample.load()
+
+    viz.target(sample, (args.x, args.y))
+
+
 def create_arg_parsers() -> argparse.ArgumentParser:
     """ Creates and argument parser for the traffic4cast_viz module
 
@@ -75,6 +87,17 @@ def create_arg_parsers() -> argparse.ArgumentParser:
                              help="name of the city for display pourpuses",
                              default="Unknown")
     hist_parser.set_defaults(func=dsipatch_hist)
+
+    target_parser = \
+        subparsers.add_parser('target',
+                              help='display graphs for a target location')
+    target_parser.add_argument("input", help="path of the *.hdf5 file")
+    target_parser.add_argument("x", help="x coordinate", type=int)
+    target_parser.add_argument("y", help="y coordinate", type=int)
+    target_parser.add_argument("--city",
+                               help="name of the city for display purposes",
+                               default="Unknown")
+    target_parser.set_defaults(func=dispatch_target)
 
     return parser
 
