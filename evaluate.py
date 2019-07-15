@@ -40,6 +40,7 @@ def main():
                         choices=CITIES,
                         help="which city to evaluate")
     parser.add_argument("--overwrite",
+                        default=False,
                         action="store_true",
                         help="overwrite existing predictions if they exist")
     parser.add_argument("-v",
@@ -63,7 +64,8 @@ def main():
         return np.concatenate(frame_preds, axis=0)
 
     # Cache predictions to a specified path
-    cached_predict = lambda path, *args: cache(predict, path, *args)
+    to_overwrite = args.overwrite
+    cached_predict = lambda path, *args: cache(predict, path, to_overwrite, *args)
 
     def get_path_pr(date):
         dirname = os.path.join("output", "predictions", args.split, args.model, args.city)
