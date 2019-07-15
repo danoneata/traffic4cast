@@ -1,8 +1,8 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import numpy as np
 
-FRAME_DURATION = 5  # minutes
+from src.dataset import Traffic4CastSample
 
 
 def cache(func, path, *args, **kwargs):
@@ -16,7 +16,7 @@ def cache(func, path, *args, **kwargs):
 
 def day_frame_to_date(day: datetime, frame: int) -> datetime:
     # This function is the inverse of `date_to_day_frame`
-    return day + timedelta(minutes=frame * FRAME_DURATION)
+    return day + frame * Traffic4CastSample.time_step_delta
 
 
 def date_to_day_frame(date: datetime) -> (datetime, int):
