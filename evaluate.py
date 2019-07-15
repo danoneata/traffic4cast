@@ -90,8 +90,10 @@ def main():
             if args.verbose:
                 print(sample.date, "|", " | ".join(f"{e:7.3f}" for e in sq_err))
 
-        table = [np.vstack(errors).mean(axis=0).tolist()]
-        print(tabulate(table, headers=CHANNELS, tablefmt="github"))
+        errors = np.vstack(errors)
+        table = [errors.mean(axis=0).tolist() + [errors.mean()]]
+        headers = CHANNELS + ["mean"]
+        print(tabulate(table, headers=headers, tablefmt="github"))
 
     elif args.split == "test":
         for i in range(nr_days):
