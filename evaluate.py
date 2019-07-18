@@ -70,7 +70,7 @@ def main():
 
     def predict(sample):
         frame_preds = [model.predict(sample, frame) for frame in START_FRAMES]
-        return np.concatenate(frame_preds, axis=0)
+        return np.stack(frame_preds)
 
     # Cache predictions to a specified path
     to_overwrite = args.overwrite
@@ -91,17 +91,16 @@ def main():
 
         for i in range(nr_days):
             sample = dataset[i]
-            data = sample.data.numpy().astype('float')
+            data = sample.data.numpy()
 
-            gt = data[EVALUATION_FRAMES]
-            pr = cached_predict(get_path_pr(sample.date), sample)
+            gt = np.stack([data[s: s + N_FRAMES] for s in START_FRAMES]) / 255.0
+            pr = cached_predict(get_path_pr(sample.date), sample) / 255.0
 
-            diff = (gt - pr) / 255.0
-            sq_err = np.mean(diff**2, axis=(0, 1, 2))
-            errors.append(sq_err)
+            mse = np.mean((gt - pr)**2, axis=(0, 1, 2, 3))
+            errors.append(mse)
 
             if args.verbose:
-                print(sample.date, "|", " | ".join(to_str(e) for e in sq_err))
+                print(sample.date, "|", " | ".join(to_str(e) for e in mse))
 
         errors = np.vstack(errors)
         table = [[args.model] + [to_str(v) for v in errors.mean(axis=0).tolist()] + [to_str(errors.mean())]]
