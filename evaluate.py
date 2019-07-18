@@ -73,6 +73,8 @@ def main():
         os.makedirs(dirname, exist_ok=True)
         return os.path.join(dirname, filename)
 
+    to_str = lambda v: f"{v:7.5f}"
+
     if args.split == "validation":
 
         errors = []
@@ -84,15 +86,16 @@ def main():
             gt = data[EVALUATION_FRAMES]
             pr = cached_predict(get_path_pr(sample.date), sample)
 
-            sq_err = np.mean((gt - pr)**2, axis=(0, 1, 2))
+            diff = (gt - pr) / 255.0
+            sq_err = np.mean(diff**2, axis=(0, 1, 2))
             errors.append(sq_err)
 
             if args.verbose:
-                print(sample.date, "|", " | ".join(f"{e:7.3f}" for e in sq_err))
+                print(sample.date, "|", " | ".join(to_str(e) for e in sq_err))
 
         errors = np.vstack(errors)
-        table = [errors.mean(axis=0).tolist() + [errors.mean()]]
-        headers = CHANNELS + ["mean"]
+        table = [[args.model] + [to_str(v) for v in errors.mean(axis=0).tolist()] + [to_str(errors.mean())]]
+        headers = ["model"] + CHANNELS + ["mean"]
         print(tabulate(table, headers=headers, tablefmt="github"))
 
     elif args.split == "test":
