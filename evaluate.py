@@ -76,10 +76,11 @@ def main():
     to_overwrite = args.overwrite
     cached_predict = lambda path, *args: cache(predict, path, to_overwrite, *args)
 
+    dirname = os.path.join("output", "predictions", args.split, args.model, args.city)
+    os.makedirs(dirname, exist_ok=True)
+
     def get_path_pr(date):
-        dirname = os.path.join("output", "predictions", args.split, args.model, args.city)
         filename = date.strftime('%Y-%m-%d') + ".npy"
-        os.makedirs(dirname, exist_ok=True)
         return os.path.join(dirname, filename)
 
     to_str = lambda v: f"{v:7.5f}"
