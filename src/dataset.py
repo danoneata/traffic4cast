@@ -55,13 +55,15 @@ class Traffic4CastSample(object):
             The resulting 3D tensors of shape [width * Cin, Hin, Win] are
             batched in batches of size batch_size.
             The generators yields a tensor of shape [N, Cout, Hout, Wout] where:
-            N = batch_size
+            N = batch_size or last_batch_size
             Cout = width * Cin
             Hout = Hin
             Wout = Win
+            The last batch can have a smaller size since there are not enough
+            sliding window sequences to fill it whole.
 
             Number of tensors generated is:
-                floor((floor((T - width) / stride) + 1) / batch_size)
+                ceil((floor((T - width) / stride) + 1) / batch_size)
 
             Args:
                 width: size of the sliding window
@@ -72,13 +74,23 @@ class Traffic4CastSample(object):
                 4D tensor with shape [N, Cout, Hout, Wout]
         """
 
-        num_batches = (math.floor(
-            (self.data.shape[0] - width) / stride) + 1) // batch_size
-        batch_shape = (batch_size, width * self.data.shape[3],
-                       self.data.shape[1], self.data.shape[2])
+        num_slices = math.floor((self.data.shape[0] - width) / stride) + 1
+        num_batches = math.ceil(num_slices / batch_size)
+        last_batch_size = num_slices - (num_slices // batch_size) * batch_size
+        if last_batch_size == 0:
+            last_batch_size = batch_size
+
         for batch_i in range(num_batches):
+            if batch_i < (num_batches - 1):
+                batch_i_size = batch_size
+            else:
+                batch_i_size = last_batch_size
+
+            batch_shape = (batch_i_size, width * self.data.shape[3],
+                           self.data.shape[1], self.data.shape[2])
+
             batch = torch.empty(batch_shape, dtype=self.data.dtype)
-            for slice_i in range(batch_size):
+            for slice_i in range(batch.shape[0]):
                 start = (batch_i * batch_size + slice_i) * stride
                 stop = start + width
                 axes = 0, 3, 1, 2
