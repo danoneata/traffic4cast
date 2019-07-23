@@ -1,3 +1,5 @@
+import pdb
+
 import numpy as np
 
 import torch
@@ -23,30 +25,21 @@ class Naive:
         return np.repeat(data, N_FRAMES, axis=0)
 
 
-def conv3(in_planes, out_planes, stride=1):
-    return nn.Conv2d(
-        in_planes, out_planes, kernel_size=3, stride=stride, padding=1, bias=True
-    )
-
-
-class AdiNet(nn.Module):
+class TemporalRegression(nn.Module):
 
     def __init__(self):
-        super(AdiNet, self).__init__()
-        self.conv1 = conv3(12 * 3, 16)
-        self.bn1 = nn.BatchNorm2d(16)
-        self.relu = nn.ReLU(inplace=True)
-        self.conv2 = conv3(16, 16)
-        self.bn2 = nn.BatchNorm2d(16)
-        self.conv3 = conv3(16, 3 * 3)
+        super(TemporalRegression, self).__init__()
+        kwargs = dict(kernel_size=1, stride=1, padding=0, bias=True)
+        self.conv1 = nn.Conv2d(12, 16, **kwargs)
+        self.conv2 = nn.Conv2d(16, 16, **kwargs)
+        self.conv3 = nn.Conv2d(16, 1, **kwargs)
 
     def forward(self, x):
-        x = x / 255
+        x = x / 255 - 0.5
         x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.relu(x)
+        x = torch.relu(x)
         x = self.conv2(x)
-        x = self.bn2(x)
+        x = torch.relu(x)
         x = self.conv3(x)
-        x = self.relu(x)
+        x = torch.sigmoid(x)
         return 255 * x

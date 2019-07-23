@@ -1,7 +1,7 @@
-from models.baseline import Naive, Zeros, AdiNet
+from models.baseline import Naive, Zeros, TemporalRegression
 
 MODELS = {
     "naive": Naive,
     "zeros": Zeros,
-    "adi-net": AdiNet,
+    "temp-regr": TemporalRegression,
 }
