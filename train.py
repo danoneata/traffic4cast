@@ -72,8 +72,14 @@ def main():
     valid_dataset = Traffic4CastDataset(ROOT, "validation", cities=[args.city])
 
     collate_fn1 = partial(collate_fn, args.channel.capitalize())
-    train_loader = DataLoader(train_dataset, batch_size=1, collate_fn=collate_fn1, shuffle=True)
-    valid_loader = DataLoader(valid_dataset, batch_size=1, collate_fn=collate_fn1, shuffle=False)
+    train_loader = DataLoader(train_dataset,
+                              batch_size=1,
+                              collate_fn=collate_fn1,
+                              shuffle=True)
+    valid_loader = DataLoader(valid_dataset,
+                              batch_size=1,
+                              collate_fn=collate_fn1,
+                              shuffle=False)
 
     model = MODELS[args.model]()
     model.cuda()
@@ -86,13 +92,15 @@ def main():
 
     @trainer.on(Events.ITERATION_COMPLETED)
     def log_training_loss(trainer):
-        print("Epoch {:3d} Train loss: {:8.2f}".format(trainer.state.epoch, trainer.state.output))
+        print("Epoch {:3d} Train loss: {:8.2f}".format(trainer.state.epoch,
+                                                       trainer.state.output))
 
     @trainer.on(Events.EPOCH_COMPLETED)
     def log_validation_loss(trainer):
         evaluator.run(valid_loader)
         metrics = evaluator.state.metrics
-        print("Epoch {:3d} Valid loss: {:8.2f} ←".format(trainer.state.epoch, metrics['loss']))
+        print("Epoch {:3d} Valid loss: {:8.2f} ←".format(
+            trainer.state.epoch, metrics['loss']))
 
     trainer.run(train_loader, max_epochs=16)
     torch.save(model.state_dict(), get_model_path())
