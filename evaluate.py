@@ -65,9 +65,11 @@ def main():
 
     # Cache predictions to a specified path
     to_overwrite = args.overwrite
-    cached_predict = lambda path, *args: cache(predict, path, to_overwrite, *args)
+    cached_predict = lambda path, *args: cache(predict, path, to_overwrite,
+                                               *args)
 
-    dirname = os.path.join("output", "predictions", args.split, args.model, args.city)
+    dirname = os.path.join("output", "predictions", args.split, args.model,
+                           args.city)
     os.makedirs(dirname, exist_ok=True)
 
     def get_path_pr(date):
@@ -84,7 +86,7 @@ def main():
             sample = dataset[i]
             data = sample.data.numpy()
 
-            gt = np.stack([data[s: s + N_FRAMES] for s in START_FRAMES]) / 255.0
+            gt = np.stack([data[s:s + N_FRAMES] for s in START_FRAMES]) / 255.0
             pr = cached_predict(get_path_pr(sample.date), sample) / 255.0
 
             mse = np.mean((gt - pr)**2, axis=(0, 1, 2, 3))
@@ -94,7 +96,9 @@ def main():
                 print(sample.date, "|", " | ".join(to_str(e) for e in mse))
 
         errors = np.vstack(errors)
-        table = [[args.model] + [to_str(v) for v in errors.mean(axis=0).tolist()] + [to_str(errors.mean())]]
+        table = [[args.model] +
+                 [to_str(v) for v in errors.mean(axis=0).tolist()] +
+                 [to_str(errors.mean())]]
         headers = ["model"] + CHANNELS + ["mean"]
         print(tabulate(table, headers=headers, tablefmt="github"))
 
