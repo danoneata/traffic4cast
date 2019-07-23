@@ -4,23 +4,9 @@ from datetime import datetime
 
 import h5py
 import numpy as np
+import submission_write
 
 from src.dataset import Traffic4CastSample
-
-
-def write_data(data, filename):
-    """Write data in gzipped h5 format.
-
-    This function was taken almost verbatim from the official competition repo:
-    https://github.com/iarai/NeurIPS2019-traffic4cast/blob/master/utils/create_submissiontest_like.py#L34-L40
-    """
-    f = h5py.File(filename, 'w', libver='latest')
-    f.create_dataset('array',
-                     shape=data.shape,
-                     data=data,
-                     compression='gzip',
-                     compression_opts=9)
-    f.close()
 
 
 def cache(func, path, to_overwrite, *args, **kwargs):
@@ -31,7 +17,7 @@ def cache(func, path, to_overwrite, *args, **kwargs):
     else:
         result = func(*args, **kwargs)
         results = result.astype(np.uint8)
-        write_data(result, path)
+        submission_write.write_data(result, path)
         return result
 
 
