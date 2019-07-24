@@ -49,10 +49,10 @@ class TemporalRegression(nn.Module):
         return 255 * x
 
     def predict(self, sample, frame):
-        i = Traffic4CastSample.channel_to_index[self.channel.capitalize()]
+        ch = Traffic4CastSample.channel_to_index[self.channel.capitalize()]
         axes = 0, 3, 1, 2
         x = sample.data.permute(axes)
-        x = x[:, i]
+        x = x[:, ch]
         x = x[frame - self.history - 1: frame - 1]
         x = x.unsqueeze(0).float()
         with torch.no_grad():
@@ -64,5 +64,5 @@ class TemporalRegression(nn.Module):
         preds = torch.cat(preds, 1).permute([1, 2, 3, 0])
         _, H, W, _ = preds.shape
         res = torch.zeros(N_FRAMES, H, W, 3)
-        res[:, :, :, i] = preds.squeeze()
+        res[:, :, :, ch] = preds.squeeze()
         return res
