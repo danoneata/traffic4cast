@@ -37,7 +37,7 @@ def collate_fn(history, channel, *args):
             batch = select_channel(window, channel)
             tr_batch = batch[:, :history].float().cuda()
             te_batch = batch[:, history:].float().cuda()
-            print(sample.date, list(tr_batch.shape), end=" ")
+            print(sample.date, end=" ")
             return tr_batch, te_batch
 
 
