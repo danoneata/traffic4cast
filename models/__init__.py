@@ -1,5 +1,6 @@
-from models.random import Random
+from models.baseline import Naive, Zeros
 
 MODELS = {
-    "random": Random,
+    "naive": Naive,
+    "zeros": Zeros,
 }
