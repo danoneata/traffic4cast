@@ -26,6 +26,7 @@ from evaluate import ROOT, CITIES, CHANNELS
 
 
 def select_channel(data, channel):
+    # Every third frame belongs to the same channel.
     s = Traffic4CastSample.channel_to_index[channel]
     return data[:, s::3]
 
