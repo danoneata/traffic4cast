@@ -4,6 +4,7 @@ dependencies:
     - pytorch>=1.0::pytorch
     - torchvision::pytorch
     - cudatoolkit=9.0::pytorch
+    - ignite::pytorch
     - numpy
     - h5py
     - matplotlib

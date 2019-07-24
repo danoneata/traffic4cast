@@ -3,5 +3,5 @@ from models.baseline import Naive, Zeros, TemporalRegression
 MODELS = {
     "naive": Naive,
     "zeros": Zeros,
-    "temp-regr": TemporalRegression,
+    "temporal-regression-speed-12": lambda: TemporalRegression("speed", 12),
 }

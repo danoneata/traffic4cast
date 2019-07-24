@@ -5,6 +5,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from src.dataset import Traffic4CastSample
+
 
 N_FRAMES = 3
 
@@ -27,10 +29,12 @@ class Naive:
 
 class TemporalRegression(nn.Module):
 
-    def __init__(self):
+    def __init__(self, channel: str, history: int):
         super(TemporalRegression, self).__init__()
+        self.channel = channel
+        self.history = history
         kwargs = dict(kernel_size=1, stride=1, padding=0, bias=True)
-        self.conv1 = nn.Conv2d(12, 16, **kwargs)
+        self.conv1 = nn.Conv2d(history, 16, **kwargs)
         self.conv2 = nn.Conv2d(16, 16, **kwargs)
         self.conv3 = nn.Conv2d(16, 1, **kwargs)
 
@@ -43,3 +47,22 @@ class TemporalRegression(nn.Module):
         x = self.conv3(x)
         x = torch.sigmoid(x)
         return 255 * x
+
+    def predict(self, sample, frame):
+        i = Traffic4CastSample.channel_to_index[self.channel.capitalize()]
+        axes = 0, 3, 1, 2
+        x = sample.data.permute(axes)
+        x = x[:, i]
+        x = x[frame - self.history - 1: frame - 1]
+        x = x.unsqueeze(0).float()
+        with torch.no_grad():
+            preds = []
+            for i in range(N_FRAMES):
+                pred = self.forward(x)
+                preds.append(pred)
+                x = torch.cat((x[:, 1:], pred), dim=1)
+        preds = torch.cat(preds, 1).permute([1, 2, 3, 0])
+        _, H, W, _ = preds.shape
+        res = torch.zeros(N_FRAMES, H, W, 3)
+        res[:, :, :, i] = preds.squeeze()
+        return res

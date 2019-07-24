@@ -30,12 +30,12 @@ def select_channel(data, channel):
     return data[:, s::3]
 
 
-def collate_fn(channel, *args):
+def collate_fn(history, channel, *args):
     for sample in Traffic4CastDataset.collate_list(*args):
-        for window in sample.sliding_window_generator(12 + 1, 4, 64):
+        for window in sample.sliding_window_generator(history + 1, 4, 32):
             batch = select_channel(window, channel)
-            tr_batch = batch[:, :12].float().cuda()
-            te_batch = batch[:, 12:].float().cuda()
+            tr_batch = batch[:, :history].float().cuda()
+            te_batch = batch[:, history:].float().cuda()
             print(sample.date, list(tr_batch.shape), end=" ")
             return tr_batch, te_batch
 
@@ -53,10 +53,6 @@ def main():
                         required=True,
                         choices=CITIES,
                         help="which city to evaluate")
-    parser.add_argument("--channel",
-                        required=True,
-                        choices=CHANNELS,
-                        help="which city to evaluate")
     parser.add_argument("-v",
                         "--verbose",
                         action="count",
@@ -66,12 +62,15 @@ def main():
     print(args)
 
     def get_model_path():
-        return "outputs/models/{args.model}_{args.city}_{args.channel}.pth"
+        return f"output/models/{args.model}_{args.city}.pth"
 
     train_dataset = Traffic4CastDataset(ROOT, "training", cities=[args.city])
     valid_dataset = Traffic4CastDataset(ROOT, "validation", cities=[args.city])
 
-    collate_fn1 = partial(collate_fn, args.channel.capitalize())
+    model = MODELS[args.model]()
+    model.cuda()
+
+    collate_fn1 = partial(collate_fn, model.history, model.channel.capitalize())
     train_loader = DataLoader(train_dataset,
                               batch_size=1,
                               collate_fn=collate_fn1,
@@ -80,9 +79,6 @@ def main():
                               batch_size=1,
                               collate_fn=collate_fn1,
                               shuffle=False)
-
-    model = MODELS[args.model]()
-    model.cuda()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.04)
     loss = MSELoss()
