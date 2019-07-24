@@ -7,7 +7,6 @@ import torch.nn as nn
 
 from src.dataset import Traffic4CastSample
 
-
 N_FRAMES = 3
 
 
@@ -28,6 +27,8 @@ class Naive:
 
 
 class TemporalRegression(nn.Module):
+    """Temporal model for a single single channel. Predicts the next value by
+    considering a fixed history at the same coordinate. """
 
     def __init__(self, channel: str, history: int):
         super(TemporalRegression, self).__init__()
@@ -39,6 +40,7 @@ class TemporalRegression(nn.Module):
         self.conv3 = nn.Conv2d(16, 1, **kwargs)
 
     def forward(self, x):
+        # Brute standardization
         x = x / 255 - 0.5
         x = self.conv1(x)
         x = torch.relu(x)
@@ -46,23 +48,34 @@ class TemporalRegression(nn.Module):
         x = torch.relu(x)
         x = self.conv3(x)
         x = torch.sigmoid(x)
-        return 255 * x
+        return 255 * x  # Rescale result to predict in [0, 255]
 
     def predict(self, sample, frame):
+        N_CHANNELS = 3
+        AXES1 = 0, 3, 1, 2
+        AXES2 = 1, 2, 3, 0
+
         ch = Traffic4CastSample.channel_to_index[self.channel.capitalize()]
-        axes = 0, 3, 1, 2
-        x = sample.data.permute(axes)
-        x = x[:, ch]
-        x = x[frame - self.history - 1: frame - 1]
-        x = x.unsqueeze(0).float()
+
+        x = sample.data.permute(AXES1)  # T × C × H × W
+        x = x[frame - self.history - 1:frame - 1, ch]
+        x = x.unsqueeze(0).float()  # 1 × T × H × W
+
+        def update_history(xs, x):
+            return torch.cat((xs[:, 1:], x), 1)
+
         with torch.no_grad():
             preds = []
             for i in range(N_FRAMES):
                 pred = self.forward(x)
                 preds.append(pred)
-                x = torch.cat((x[:, 1:], pred), dim=1)
-        preds = torch.cat(preds, 1).permute([1, 2, 3, 0])
-        _, H, W, _ = preds.shape
-        res = torch.zeros(N_FRAMES, H, W, 3)
+                x = update_history(x, pred)
+
+        preds = torch.cat(preds, 1)  # 1 × T × H × W
+        preds = preds.permute(AXES2)  # T × H × W × 1
+
+        # Predict zeros for the rest of the channels
+        res = torch.zeros(N_FRAMES, preds.shape[1], preds.shape[2], N_CHANNELS)
         res[:, :, :, ch] = preds.squeeze()
+
         return res
