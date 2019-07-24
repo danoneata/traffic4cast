@@ -24,7 +24,8 @@ class Traffic4CastSample(object):
             date (datetime): Date when the data sample was collected.
     """
     time_step_delta = datetime.timedelta(minutes=5)
-    channel_label = {0: "Volume", 1: "Speed", 2: "Heading"}
+    index_to_channel = {0: "Volume", 1: "Speed", 2: "Heading"}
+    channel_to_index = {v: k for k, v in index_to_channel.items()}
 
     def __init__(self, path: str, city: str):
         """ Initializes the Traffic4CastSample data sample

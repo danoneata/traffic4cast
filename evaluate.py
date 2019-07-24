@@ -4,6 +4,8 @@ import pdb
 
 import numpy as np
 
+import torch
+
 from tabulate import tabulate
 
 from models import MODELS
@@ -29,6 +31,10 @@ def main():
                         required=True,
                         choices=MODELS,
                         help="which model to use")
+    parser.add_argument("-p",
+                        "--model-path",
+                        type=str,
+                        help="path to the saved model")
     parser.add_argument("-s",
                         "--split",
                         default="validation",
@@ -54,7 +60,10 @@ def main():
 
     Model = MODELS[args.model]
     model = Model()
-    # TODO Load model
+
+    if args.model_path:
+        model.load_state_dict(torch.load(args.model_path))
+        model.eval()
 
     dataset = Traffic4CastDataset(ROOT, args.split, cities=[args.city])
     nr_days = len(dataset)
