@@ -41,6 +41,51 @@ def collate_fn(history, channel, *args):
             return tr_batch, te_batch
 
 
+def train(city, model_type, hp, max_epochs=12, model_path=None):
+
+    train_dataset = Traffic4CastDataset(ROOT, "training", cities=[city])
+    valid_dataset = Traffic4CastDataset(ROOT, "validation", cities=[city])
+
+    model = MODELS[model_type](**{k: v for k, v in hp if k.startswith('model')})
+    model.cuda()
+
+    collate_fn1 = partial(collate_fn, model.history, model.channel.capitalize())
+    train_loader = DataLoader(train_dataset,
+                              batch_size=1,
+                              collate_fn=collate_fn1,
+                              shuffle=True)
+    valid_loader = DataLoader(valid_dataset,
+                              batch_size=1,
+                              collate_fn=collate_fn1,
+                              shuffle=False)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=hp['optimizer']['lr'])
+    loss = MSELoss()
+
+    trainer = create_supervised_trainer(model, optimizer, loss)
+    evaluator = create_supervised_evaluator(model, metrics={'loss': Loss(loss)})
+
+    @trainer.on(Events.ITERATION_COMPLETED)
+    def log_training_loss(trainer):
+        print("Epoch {:3d} Train loss: {:8.2f}".format(trainer.state.epoch,
+                                                       trainer.state.output))
+
+    @trainer.on(Events.EPOCH_COMPLETED)
+    def log_validation_loss(trainer):
+        evaluator.run(valid_loader)
+        metrics = evaluator.state.metrics
+        print("Epoch {:3d} Valid loss: {:8.2f} ←".format(
+            trainer.state.epoch, metrics['loss']))
+
+    trainer.run(train_loader, max_epochs=max_epochs)
+
+    if model_path:
+        torch.save(model.state_dict(), model_path)
+        print("Model saved at:", model_path)
+
+    return {"loss": evaluator.state.metrics['loss'], ...}
+
+
 def main():
     parser = argparse.ArgumentParser(description="Evaluate a given model")
     parser.add_argument("-m",
@@ -62,46 +107,10 @@ def main():
 
     print(args)
 
-    def get_model_path():
-        return f"output/models/{args.model}_{args.city}.pth"
+    model_path = f"output/models/{args.model}_{args.city}.pth"
+    hp = args_to_dict(args)
 
-    train_dataset = Traffic4CastDataset(ROOT, "training", cities=[args.city])
-    valid_dataset = Traffic4CastDataset(ROOT, "validation", cities=[args.city])
-
-    model = MODELS[args.model]()
-    model.cuda()
-
-    collate_fn1 = partial(collate_fn, model.history, model.channel.capitalize())
-    train_loader = DataLoader(train_dataset,
-                              batch_size=1,
-                              collate_fn=collate_fn1,
-                              shuffle=True)
-    valid_loader = DataLoader(valid_dataset,
-                              batch_size=1,
-                              collate_fn=collate_fn1,
-                              shuffle=False)
-
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.04)
-    loss = MSELoss()
-
-    trainer = create_supervised_trainer(model, optimizer, loss)
-    evaluator = create_supervised_evaluator(model, metrics={'loss': Loss(loss)})
-
-    @trainer.on(Events.ITERATION_COMPLETED)
-    def log_training_loss(trainer):
-        print("Epoch {:3d} Train loss: {:8.2f}".format(trainer.state.epoch,
-                                                       trainer.state.output))
-
-    @trainer.on(Events.EPOCH_COMPLETED)
-    def log_validation_loss(trainer):
-        evaluator.run(valid_loader)
-        metrics = evaluator.state.metrics
-        print("Epoch {:3d} Valid loss: {:8.2f} ←".format(
-            trainer.state.epoch, metrics['loss']))
-
-    trainer.run(train_loader, max_epochs=16)
-    torch.save(model.state_dict(), get_model_path())
-    print("Model saved at:", get_model_path())
+    train(city, args.model, hp, model_path=model_path)
 
 
 if __name__ == "__main__":
