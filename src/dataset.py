@@ -1,7 +1,8 @@
-from typing import List, Callable
+from typing import List, Callable, Union, Tuple
 import datetime
-import os
 import math
+import os
+import random
 
 import numpy as np
 import h5py
@@ -39,12 +40,76 @@ class Traffic4CastSample(object):
         self.data = None
         self.city = city
         self.date = path_to_date(path)
+        self.layout = None
+        self.valid = None
 
     def load(self):
         """ Load the data sample in the .hdf5 file """
 
         self.data = torch.from_numpy(
             np.array(h5py.File(self.path, 'r')['array']))
+        self.layout = "THWC"
+        self.data = self.data.to(torch.uint8)
+        self.valid = self.data.view(self.data.shape[0], -1).any(0)
+
+    def permute(self, axes: str):
+        """ Change data layout. """
+
+        axes = [self.layout.find(ax) for ax in axes]
+        self.data.permute(axes)
+        self.layout = axes
+
+    def temporal_slices(
+            self, size: int, frames: List[int], valid: bool
+    ) -> Union[Tuple[torch.tensor, torch.tensor], torch.tensor]:
+        """ Time slice generator.
+
+            Generates termporal slices into the data stream. For each frame_i
+            in the frames list a slice along the time dimension is generated.
+            The frames in the slice are [frame_i - size, frame_i).
+            The returned tensors are views into the original data, i.e. they
+            share underlying storage.
+
+            Args:
+                size: slice size
+                frames: frame indices for which to generate slices
+                valid: whether or not to return the list of valid frames in the
+                       slice
+
+            Yields:
+                torch.tensor temporal slice.
+        """
+        time_axis = self.layout.find('T')
+        for frame in frames:
+            if valid:
+                yield (self.data.narrow(time_axis, frame - size,
+                                        size), self.valid[frame - size:frame])
+            else:
+                yield self.data.narrow(time_axis, frame - size, size)
+
+    def random_temporal_batches(self, num_batches: int, batch_size: int,
+                                slice_size: int) -> torch.tensor:
+        """ Random time slice batch generator.
+
+            Generates num_batches batches of termporal slices, of size
+            slice_size, into the data stream.
+            The shape of the batch is [num_batches, current shape of the data].
+
+            Args:
+                size: slice size
+                frames: frame indices for which to generate slices
+                valid: whether or not to return the list of valid frames in the
+                       slice
+
+            Yields:
+                torch.tensor batch of temporal slices.
+        """
+
+        num_frames = self.data.shape[self.layout.find('T')]
+        for batch in range(num_batches):
+            frames = random.sample(range(batch_size, num_frames), batch_size)
+            yield torch.stack(
+                list(self.temporal_slices(slice_size, frames, valid=False)))
 
     def sliding_window_generator(self, width: int, stride: int,
                                  batch_size: int):
