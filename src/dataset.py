@@ -62,9 +62,9 @@ class Traffic4CastSample(object):
     def temporal_slices(
             self, size: int, frames: List[int], valid: bool
     ) -> Union[Tuple[torch.tensor, torch.tensor], torch.tensor]:
-        """ Time slice generator.
+        """ Temporal slice generator.
 
-            Generates termporal slices into the data stream. For each frame_i
+            Generates termporal slices of the data stream. For each frame_i
             in the frames list a slice along the time dimension is generated.
             The frames in the slice are [frame_i - size, frame_i).
             The returned tensors are views into the original data, i.e. they
@@ -79,6 +79,7 @@ class Traffic4CastSample(object):
             Yields:
                 torch.tensor temporal slice.
         """
+
         time_axis = self.layout.find('T')
         for frame in frames:
             if valid:
@@ -87,13 +88,51 @@ class Traffic4CastSample(object):
             else:
                 yield self.data.narrow(time_axis, frame - size, size)
 
+    def selected_temporal_batches(self, batch_size: int, slice_size: int,
+                                  frames: List[int]) -> torch.tensor:
+        """ Temporal slice batch generator.
+
+            Generates batches of termporal slices, of size slice_size, of the
+            data stream.
+            The first dimension of the output tensor is the "batch" dimension.
+            The other dimensions are dependent on the current layout of the
+            data. E.g: current data layout = [T, C, H, W] the shape of the
+            result is [N, slice_size, C, H, W]. Where:
+            N = batch_size or
+            N = len(frames) - floor(len(frames) / batch_size) * batch_size for
+            the last batch.
+
+            Args:
+                size: slice size
+                frames: frame indices for which to generate slices
+                valid: whether or not to return the list of valid frames in the
+                       slice
+
+            Yields:
+                torch.tensor batch of temporal slices.
+        """
+
+        num_batches = (len(frames) + batch_size) // batch_size
+        for batch in range(num_batches):
+            if batch < num_batches - 1:
+                batch_frames = frames[batch * batch_size:(batch + 1) *
+                                      batch_size]
+            else:
+                batch_frames = frames[batch * batch_size:]
+            yield torch.stack(
+                list(self.temporal_slices(slice_size, batch_frames,
+                                          valid=False)))
+
     def random_temporal_batches(self, num_batches: int, batch_size: int,
                                 slice_size: int) -> torch.tensor:
-        """ Random time slice batch generator.
+        """ Random temporal slice batch generator.
 
             Generates num_batches batches of termporal slices, of size
-            slice_size, into the data stream.
-            The shape of the batch is [num_batches, current shape of the data].
+            slice_size, of the data stream.
+            The first dimension of the output tensor is the "batch" dimension.
+            The other dimensions are dependent on the current layout of the
+            data. E.g: current data layout = [T, C, H, W], the shape of the
+            result is [batch_size, slice_size, C, H, W].
 
             Args:
                 size: slice size
