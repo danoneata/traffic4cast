@@ -10,7 +10,7 @@ import numpy as np
 
 import torch
 
-from torch.utils.data import DataLoader, RandomSampler
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.nn import MSELoss
 
 from ignite.engine import Events, create_supervised_trainer, create_supervised_evaluator
@@ -24,6 +24,15 @@ from utils import sliding_window
 from models import MODELS
 
 from evaluate import ROOT, CITIES, CHANNELS
+
+
+MAX_EPOCHS = 64
+PATIENCE = 8
+LR_REDUCE_PARAMS = {
+    "factor": 0.2,
+    "patience": 4,
+}
+
 
 
 def select_channel(data, channel):
@@ -88,6 +97,8 @@ def main():
     trainer = create_supervised_trainer(model, optimizer, loss)
     evaluator = create_supervised_evaluator(model, metrics={'loss': Loss(loss)})
 
+    lr_reduce = ReduceLROnPlateau(optimizer, verbose=args.verbose, **LR_REDUCE_PARAMS)
+
     @trainer.on(Events.ITERATION_COMPLETED)
     def log_training_loss(trainer):
         print("Epoch {:3d} Train loss: {:8.2f}".format(trainer.state.epoch,
@@ -100,12 +111,14 @@ def main():
         print("Epoch {:3d} Valid loss: {:8.2f} ←".format(
             trainer.state.epoch, metrics['loss']))
 
+    @evaluator.on(Events.COMPLETED)
+    def update_lr_reduce(engine):
+        loss = engine.state.metrics['loss']
+        lr_reduce.step(loss)
+
     def score_function(engine):
         return -engine.state.metrics['loss']
 
-
-    MAX_EPOCHS = 64
-    PATIENCE = 2
 
     early_stopping_handler = EarlyStopping(patience=PATIENCE, score_function=score_function, trainer=trainer)
     checkpoint_handler = ModelCheckpoint("output/models/checkpoints",
