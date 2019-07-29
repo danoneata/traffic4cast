@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader, RandomSampler
 from torch.nn import MSELoss
 
 from ignite.engine import Events, create_supervised_trainer, create_supervised_evaluator
+from ignite.handlers import ModelCheckpoint
 from ignite.metrics import Loss
 
 from src.dataset import Traffic4CastSample, Traffic4CastDataset
@@ -62,8 +63,8 @@ def main():
 
     print(args)
 
-    def get_model_path():
-        return f"output/models/{args.model}_{args.city}.pth"
+    model_name = f"{args.model}_{args.city}"
+    model_path = f"output/models/{model_name}.pth"
 
     train_dataset = Traffic4CastDataset(ROOT, "training", cities=[args.city])
     valid_dataset = Traffic4CastDataset(ROOT, "validation", cities=[args.city])
@@ -99,9 +100,21 @@ def main():
         print("Epoch {:3d} Valid loss: {:8.2f} ←".format(
             trainer.state.epoch, metrics['loss']))
 
+    def score_function(engine):
+        return -engine.state.metrics['loss']
+
+    checkpoint_handler = ModelCheckpoint("output/models/checkpoints",
+                                         model_name,
+                                         score_function=score_function,
+                                         n_saved=5,
+                                         require_empty=False,
+                                         create_dir=True)
+
+    evaluator.add_event_handler(Events.EPOCH_COMPLETED, checkpoint_handler,
+                                {"model": model})
     trainer.run(train_loader, max_epochs=16)
-    torch.save(model.state_dict(), get_model_path())
-    print("Model saved at:", get_model_path())
+    torch.save(model.state_dict(), model_path)
+    print("Model saved at:", model_path)
 
 
 if __name__ == "__main__":
