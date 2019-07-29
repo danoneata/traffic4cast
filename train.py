@@ -17,6 +17,8 @@ from ignite.engine import Events, create_supervised_trainer, create_supervised_e
 from ignite.handlers import EarlyStopping, ModelCheckpoint
 from ignite.metrics import Loss
 
+from ignite.contrib.handlers.tensorboard_logger import TensorboardLogger, OutputHandler
+
 from src.dataset import Traffic4CastSample, Traffic4CastDataset
 
 from utils import sliding_window
@@ -25,14 +27,12 @@ from models import MODELS
 
 from evaluate import ROOT, CITIES, CHANNELS
 
-
 MAX_EPOCHS = 64
 PATIENCE = 8
 LR_REDUCE_PARAMS = {
     "factor": 0.2,
     "patience": 4,
 }
-
 
 
 def select_channel(data, channel):
@@ -119,7 +119,6 @@ def main():
     def score_function(engine):
         return -engine.state.metrics['loss']
 
-
     early_stopping_handler = EarlyStopping(patience=PATIENCE, score_function=score_function, trainer=trainer)
     checkpoint_handler = ModelCheckpoint("output/models/checkpoints",
                                          model_name,
@@ -130,6 +129,16 @@ def main():
 
     evaluator.add_event_handler(Events.EPOCH_COMPLETED, early_stopping_handler)
     evaluator.add_event_handler(Events.EPOCH_COMPLETED, checkpoint_handler, {"model": model})
+
+    tensorboard_logger = TensorboardLogger(log_dir="output/tensorboard")
+    tensorboard_logger.attach(trainer,
+                              log_handler=OutputHandler(tag="training", output_transform=lambda loss: {'loss': loss}),
+                              event_name=Events.ITERATION_COMPLETED)
+    tensorboard_logger.attach(evaluator,
+                              log_handler=OutputHandler(tag="validation",
+                                                        metric_names=["loss"],
+                                                        another_engine=trainer),
+                              event_name=Events.EPOCH_COMPLETED)
 
     trainer.run(train_loader, max_epochs=16)
     torch.save(model.state_dict(), model_path)
