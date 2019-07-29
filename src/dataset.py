@@ -52,12 +52,11 @@ class Traffic4CastSample(object):
         self.data = self.data.to(torch.uint8)
         self.valid = self.data.view(self.data.shape[0], -1).any(0)
 
-    def permute(self, axes: str):
+    def permute(self, layout: str):
         """ Change data layout. """
 
-        axes = [self.layout.find(ax) for ax in axes]
-        self.data.permute(axes)
-        self.layout = axes
+        self.data = self.data.permute([self.layout.find(ax) for ax in layout])
+        self.layout = layout
 
     def temporal_slices(
             self, size: int, frames: List[int], valid: bool
