@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader, RandomSampler
 from torch.nn import MSELoss
 
 from ignite.engine import Events, create_supervised_trainer, create_supervised_evaluator
-from ignite.handlers import ModelCheckpoint
+from ignite.handlers import EarlyStopping, ModelCheckpoint
 from ignite.metrics import Loss
 
 from src.dataset import Traffic4CastSample, Traffic4CastDataset
@@ -103,6 +103,11 @@ def main():
     def score_function(engine):
         return -engine.state.metrics['loss']
 
+
+    MAX_EPOCHS = 64
+    PATIENCE = 2
+
+    early_stopping_handler = EarlyStopping(patience=PATIENCE, score_function=score_function, trainer=trainer)
     checkpoint_handler = ModelCheckpoint("output/models/checkpoints",
                                          model_name,
                                          score_function=score_function,
@@ -110,8 +115,9 @@ def main():
                                          require_empty=False,
                                          create_dir=True)
 
-    evaluator.add_event_handler(Events.EPOCH_COMPLETED, checkpoint_handler,
-                                {"model": model})
+    evaluator.add_event_handler(Events.EPOCH_COMPLETED, early_stopping_handler)
+    evaluator.add_event_handler(Events.EPOCH_COMPLETED, checkpoint_handler, {"model": model})
+
     trainer.run(train_loader, max_epochs=16)
     torch.save(model.state_dict(), model_path)
     print("Model saved at:", model_path)
