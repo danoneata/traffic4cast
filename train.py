@@ -12,6 +12,7 @@ import torch
 
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.nn import MSELoss
+from torch.utils.data import DataLoader
 
 from ignite.engine import Events, create_supervised_trainer, create_supervised_evaluator
 from ignite.handlers import EarlyStopping, ModelCheckpoint
@@ -82,22 +83,24 @@ def main():
     model.cuda()
 
     collate_fn1 = partial(collate_fn, model.history, model.channel.capitalize())
-    train_loader = DataLoader(train_dataset,
-                              batch_size=1,
-                              collate_fn=collate_fn1,
-                              shuffle=True)
-    valid_loader = DataLoader(valid_dataset,
-                              batch_size=1,
-                              collate_fn=collate_fn1,
-                              shuffle=False)
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=1,
+        collate_fn=collate_fn1,
+        shuffle=True,
+    )
+    valid_loader = DataLoader(
+        valid_dataset,
+        batch_size=1,
+        collate_fn=collate_fn1,
+        shuffle=False,
+    )
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.04)
     loss = MSELoss()
 
     trainer = create_supervised_trainer(model, optimizer, loss)
     evaluator = create_supervised_evaluator(model, metrics={'loss': Loss(loss)})
-
-    lr_reduce = ReduceLROnPlateau(optimizer, verbose=args.verbose, **LR_REDUCE_PARAMS)
 
     @trainer.on(Events.ITERATION_COMPLETED)
     def log_training_loss(trainer):
@@ -111,6 +114,11 @@ def main():
         print("Epoch {:3d} Valid loss: {:8.2f} ←".format(
             trainer.state.epoch, metrics['loss']))
 
+    # Learning rate scheduler
+    lr_reduce = ReduceLROnPlateau(optimizer,
+                                  verbose=args.verbose,
+                                  **LR_REDUCE_PARAMS)
+
     @evaluator.on(Events.COMPLETED)
     def update_lr_reduce(engine):
         loss = engine.state.metrics['loss']
@@ -119,20 +127,29 @@ def main():
     def score_function(engine):
         return -engine.state.metrics['loss']
 
-    early_stopping_handler = EarlyStopping(patience=PATIENCE, score_function=score_function, trainer=trainer)
+    # Early stopping
+    early_stopping_handler = EarlyStopping(patience=PATIENCE,
+                                           score_function=score_function,
+                                           trainer=trainer)
+    evaluator.add_event_handler(Events.EPOCH_COMPLETED, early_stopping_handler)
+
+    # Model checkpoint
     checkpoint_handler = ModelCheckpoint("output/models/checkpoints",
                                          model_name,
                                          score_function=score_function,
                                          n_saved=5,
                                          require_empty=False,
                                          create_dir=True)
+    evaluator.add_event_handler(Events.EPOCH_COMPLETED, checkpoint_handler,
+                                {"model": model})
 
-    evaluator.add_event_handler(Events.EPOCH_COMPLETED, early_stopping_handler)
-    evaluator.add_event_handler(Events.EPOCH_COMPLETED, checkpoint_handler, {"model": model})
-
-    tensorboard_logger = TensorboardLogger(log_dir="output/tensorboard")
+    # Tensorboard
+    tensorboard_logger = TensorboardLogger(
+        log_dir=f"output/tensorboard/{model_name}")
     tensorboard_logger.attach(trainer,
-                              log_handler=OutputHandler(tag="training", output_transform=lambda loss: {'loss': loss}),
+                              log_handler=OutputHandler(
+                                  tag="training",
+                                  output_transform=lambda loss: {'loss': loss}),
                               event_name=Events.ITERATION_COMPLETED)
     tensorboard_logger.attach(evaluator,
                               log_handler=OutputHandler(tag="validation",
@@ -140,7 +157,7 @@ def main():
                                                         another_engine=trainer),
                               event_name=Events.EPOCH_COMPLETED)
 
-    trainer.run(train_loader, max_epochs=16)
+    trainer.run(train_loader, max_epochs=MAX_EPOCHS)
     torch.save(model.state_dict(), model_path)
     print("Model saved at:", model_path)
 
