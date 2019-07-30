@@ -97,8 +97,11 @@ def main():
     TRAIN_BATCH_SIZE = 32
     VALID_BATCH_SIZE = len(EVALUATION_FRAMES)
 
-    get_window_train = lambda sample: sample.random_temporal_batches(1, TRAIN_BATCH_SIZE, history + 1)
-    get_window_valid = lambda sample: sample.selected_temporal_batches(VALID_BATCH_SIZE, history + 1, EVALUATION_FRAMES)
+    TO_PREDICT = 1  # frame
+    end_frames = [frame + TO_PREDICT for frame in EVALUATION_FRAMES]
+
+    get_window_train = lambda sample: sample.random_temporal_batches(1, TRAIN_BATCH_SIZE, history + TO_PREDICT)
+    get_window_valid = lambda sample: sample.selected_temporal_batches(VALID_BATCH_SIZE, history + TO_PREDICT, end_frames)
 
     collate_fn1 = partial(collate_fn, history, channel)
 
