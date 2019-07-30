@@ -12,7 +12,7 @@ import torch
 
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.nn import MSELoss
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 
 from ignite.engine import Events, create_supervised_trainer, create_supervised_evaluator
 from ignite.handlers import EarlyStopping, ModelCheckpoint
@@ -26,7 +26,7 @@ from utils import sliding_window
 
 from models import MODELS
 
-from evaluate import ROOT, CITIES, CHANNELS
+from evaluate import CHANNELS, CITIES, EVALUATION_FRAMES, ROOT
 
 MAX_EPOCHS = 64
 PATIENCE = 8
@@ -36,18 +36,27 @@ LR_REDUCE_PARAMS = {
 }
 
 
-def select_channel(data, channel):
-    # Every third frame belongs to the same channel.
-    s = Traffic4CastSample.channel_to_index[channel]
-    return data[:, s::3]
+def select_channel(data, channel, layout):
+    c = layout.find('C')
+    i = Traffic4CastSample.channel_to_index[channel]
+    return data.narrow(c, i, 1)
 
 
-def collate_fn(history, channel, *args):
+def collate_fn(history, channel, get_window, *args):
     for sample in Traffic4CastDataset.collate_list(*args):
-        for window in sample.sliding_window_generator(history + 1, 4, 32):
-            batch = select_channel(window, channel)
-            tr_batch = batch[:, :history].float().cuda()
-            te_batch = batch[:, history:].float().cuda()
+        for window in get_window(sample):
+            window_layout = "B" + sample.layout
+            t = window_layout.find('T')
+
+            batch = select_channel(window, channel, window_layout)
+            batch = batch.float().cuda()
+            assert batch.shape[-1] == 1
+            batch = batch.squeeze()
+            assert len(batch.shape) == 4
+
+            tr_batch = batch.narrow(t, 0, history)
+            te_batch = batch.narrow(t, history, 1)
+
             print(sample.date, end=" ")
             return tr_batch, te_batch
 
@@ -82,17 +91,30 @@ def main():
     model = MODELS[args.model]()
     model.cuda()
 
-    collate_fn1 = partial(collate_fn, model.history, model.channel.capitalize())
+    history = model.history
+    channel = model.channel.capitalize()
+
+    TRAIN_BATCH_SIZE = 32
+    VALID_BATCH_SIZE = len(EVALUATION_FRAMES)
+
+    get_window_train = lambda sample: sample.random_temporal_batches(1, TRAIN_BATCH_SIZE, history + 1)
+    get_window_valid = lambda sample: sample.selected_temporal_batches(VALID_BATCH_SIZE, history + 1, EVALUATION_FRAMES)
+
+    collate_fn1 = partial(collate_fn, history, channel)
+
+    collate_fn_train = partial(collate_fn1, get_window_train)
+    collate_fn_valid = partial(collate_fn1, get_window_valid)
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=1,
-        collate_fn=collate_fn1,
+        collate_fn=collate_fn_train,
         shuffle=True,
     )
     valid_loader = DataLoader(
         valid_dataset,
         batch_size=1,
-        collate_fn=collate_fn1,
+        collate_fn=collate_fn_valid,
         shuffle=False,
     )
 
