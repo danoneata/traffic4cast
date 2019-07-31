@@ -1,10 +1,13 @@
 name: traffic4cast
+channels:
+  - pytorch
+  - defaults
 dependencies:
     - python=3.6
-    - pytorch>=1.0::pytorch
-    - torchvision::pytorch
-    - cudatoolkit=9.0::pytorch
-    - ignite::pytorch
+    - pytorch::pytorch>=1.0
+    - pytorch::torchvision
+    - pytorch::ignite
+    - cudatoolkit=9.0
     - numpy
     - h5py
     - matplotlib
