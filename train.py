@@ -64,11 +64,12 @@ def collate_fn(history, channel, get_window, *args):
 def train(city,
           model_type,
           hyper_params,
-          max_epochs=12,
+          max_epochs=MAX_EPOCHS,
           callbacks={},
           verbose=0):
 
-    model_path = f"output/models/{model_type}_{city}.pth"
+    model_name = f"{model_type}_{city}"
+    model_path = f"output/models/{model_name}.pth"
 
     train_dataset = Traffic4CastDataset(ROOT, "training", cities=[city])
     valid_dataset = Traffic4CastDataset(ROOT, "validation", cities=[city])
@@ -136,48 +137,29 @@ def train(city,
         print("Epoch {:3d} Valid loss: {:8.2f} ←".format(
             trainer.state.epoch, metrics['loss']))
 
-    # Learning rate scheduler
-    lr_reduce = ReduceLROnPlateau(optimizer,
-                                  verbose=args.verbose,
-                                  **LR_REDUCE_PARAMS)
-
-    @evaluator.on(Events.COMPLETED)
-    def update_lr_reduce(engine):
-        loss = engine.state.metrics['loss']
-        lr_reduce.step(loss)
-
     def score_function(engine):
         return -engine.state.metrics['loss']
 
-    # Early stopping
-    early_stopping_handler = EarlyStopping(patience=PATIENCE,
-                                           score_function=score_function,
-                                           trainer=trainer)
-    evaluator.add_event_handler(Events.EPOCH_COMPLETED, early_stopping_handler)
+    if "learning-rate-scheduler" in callbacks:
+        lr_reduce = ReduceLROnPlateau(optimizer, verbose=verbose, **LR_REDUCE_PARAMS)
 
-    # Model checkpoint
-    checkpoint_handler = ModelCheckpoint("output/models/checkpoints",
-                                         model_name,
-                                         score_function=score_function,
-                                         n_saved=5,
-                                         require_empty=False,
-                                         create_dir=True)
-    evaluator.add_event_handler(Events.EPOCH_COMPLETED, checkpoint_handler,
-                                {"model": model})
+        @evaluator.on(Events.COMPLETED)
+        def update_lr_reduce(engine):
+            loss = engine.state.metrics['loss']
+            lr_reduce.step(loss)
 
-    # Tensorboard
-    tensorboard_logger = TensorboardLogger(
-        log_dir=f"output/tensorboard/{model_name}")
-    tensorboard_logger.attach(trainer,
-                              log_handler=OutputHandler(
-                                  tag="training",
-                                  output_transform=lambda loss: {'loss': loss}),
-                              event_name=Events.ITERATION_COMPLETED)
-    tensorboard_logger.attach(evaluator,
-                              log_handler=OutputHandler(tag="validation",
-                                                        metric_names=["loss"],
-                                                        another_engine=trainer),
-                              event_name=Events.EPOCH_COMPLETED)
+    if "early-stopping" in callbacks:
+        early_stopping_handler = EarlyStopping(patience=PATIENCE, score_function=score_function, trainer=trainer)
+        evaluator.add_event_handler(Events.EPOCH_COMPLETED, early_stopping_handler)
+
+    if "model-checkpoint" in callbacks:
+        checkpoint_handler = ModelCheckpoint("output/models/checkpoints", model_name, score_function=score_function, n_saved=5, require_empty=False, create_dir=True)
+        evaluator.add_event_handler(Events.EPOCH_COMPLETED, checkpoint_handler, {"model": model})
+
+    if "tensorboard" in callbacks:
+        tensorboard_logger = TensorboardLogger(log_dir=f"output/tensorboard/{model_name}")
+        tensorboard_logger.attach(trainer, log_handler=OutputHandler( tag="training", output_transform=lambda loss: {'loss': loss}), event_name=Events.ITERATION_COMPLETED)
+        tensorboard_logger.attach(evaluator, log_handler=OutputHandler(tag="validation", metric_names=["loss"], another_engine=trainer), event_name=Events.EPOCH_COMPLETED)
 
     trainer.run(train_loader, max_epochs=max_epochs)
 
@@ -214,6 +196,10 @@ def main():
     }
 
     callbacks = {
+        "learning-rate-scheduler",
+        "early-stopping",
+        "model-checkpoint",
+        "tensorboard"
         "save-model",
     }
 
