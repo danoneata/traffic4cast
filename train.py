@@ -41,12 +41,30 @@ def collate_fn(history, channel, *args):
             return tr_batch, te_batch
 
 
-def train(city, model_type, hp, max_epochs=12, model_path=None):
+def train(city,
+          model_type,
+          hyper_params,
+          max_epochs=12,
+          callbacks={},
+          verbose=0):
+
+    model_path = f"output/models/{model_type}_{city}.pth"
 
     train_dataset = Traffic4CastDataset(ROOT, "training", cities=[city])
     valid_dataset = Traffic4CastDataset(ROOT, "validation", cities=[city])
 
-    model = MODELS[model_type](**{k: v for k, v in hp if k.startswith('model')})
+    def get_hyper_params(t):
+        """Selects hyper-parameters whose key starts with `t`"""
+        SEP = "_"  # separator
+        get_first = lambda s: s.split(SEP)[0]
+        remove_first = lambda s: SEP.join(s.split(SEP)[1:])
+        return {
+            remove_first(k): v
+            for k, v in hyper_params.items()
+            if get_first(k) == t
+        }
+
+    model = MODELS[model_type](**get_hyper_params("model"))
     model.cuda()
 
     collate_fn1 = partial(collate_fn, model.history, model.channel.capitalize())
@@ -59,7 +77,8 @@ def train(city, model_type, hp, max_epochs=12, model_path=None):
                               collate_fn=collate_fn1,
                               shuffle=False)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=hp['optimizer']['lr'])
+    optimizer = torch.optim.Adam(model.parameters(),
+                                 **get_hyper_params("optimizer"))
     loss = MSELoss()
 
     trainer = create_supervised_trainer(model, optimizer, loss)
@@ -79,11 +98,11 @@ def train(city, model_type, hp, max_epochs=12, model_path=None):
 
     trainer.run(train_loader, max_epochs=max_epochs)
 
-    if model_path:
+    if "save-model" in callbacks:
         torch.save(model.state_dict(), model_path)
         print("Model saved at:", model_path)
 
-    return {"loss": evaluator.state.metrics['loss'], ...}
+    return {"loss": evaluator.state.metrics['loss']}
 
 
 def main():
@@ -107,10 +126,19 @@ def main():
 
     print(args)
 
-    model_path = f"output/models/{args.model}_{args.city}.pth"
-    hp = args_to_dict(args)
+    hyper_params = {
+        "optimizer_lr": 0.04,
+    }
 
-    train(city, args.model, hp, model_path=model_path)
+    callbacks = {
+        "save-model",
+    }
+
+    train(args.city,
+          args.model,
+          hyper_params,
+          callbacks=callbacks,
+          verbose=args.verbose)
 
 
 if __name__ == "__main__":
