@@ -26,7 +26,7 @@ from utils import sliding_window
 
 from models import MODELS
 
-from evaluate import CHANNELS, CITIES, EVALUATION_FRAMES, ROOT
+from evaluate import CHANNELS, CITIES, SUBMISSION_FRAMES, ROOT
 
 MAX_EPOCHS = 64
 PATIENCE = 8
@@ -95,10 +95,10 @@ def main():
     channel = model.channel.capitalize()
 
     train_batch_size = 32
-    valid_batch_size = len(EVALUATION_FRAMES)
+    valid_batch_size = len(SUBMISSION_FRAMES)
 
     to_predict = 1  # frame
-    end_frames = [frame + to_predict for frame in EVALUATION_FRAMES]
+    end_frames = [frame + to_predict for frame in SUBMISSION_FRAMES]
 
     get_window_train = lambda sample: sample.random_temporal_batches(1, train_batch_size, history + to_predict)
     get_window_valid = lambda sample: sample.selected_temporal_batches(valid_batch_size, history + to_predict, end_frames)
