@@ -11,12 +11,13 @@ class Temporal(torch_nn.Module):
     """ Temporal model for a single single channel. Predicts the next value by
     considering a fixed history at the same coordinate. """
 
-    def __init__(self, past: int, future: int, num_channels: int,
+    def __init__(self, past: int, future: int, channels: List[str],
                  module: Union[torch_nn.Module, torch_nn.Sequential]):
         super(Temporal, self).__init__()
         self.past = past
         self.future = future
-        self.num_channels = num_channels
+        self.num_channels = len(channels)
+        self.channels = channels
         self.add_module('module', module)
 
     def forward(self, input):
@@ -35,7 +36,7 @@ class Temporal(torch_nn.Module):
                         for pred_f in range(f, -self.future, f - self.future):
                             if predictions[pred_f] is not None:
                                 i = (f - pred_f) * self.num_channels
-                                j = i + num_channels
+                                j = i + self.num_channels
                                 slice[f] = predictions[pred_f][i:j]
                                 break
                         if not replaced:
@@ -82,9 +83,9 @@ class TemporalRegression(torch_nn.Module):
         super(TemporalRegression, self).__init__()
         self.history = history
         kwargs = dict(kernel_size=1, stride=1, padding=0, bias=True)
-        self.conv1 = torch_nn.Conv2d(history * 3, 16, **kwargs)
+        self.conv1 = torch_nn.Conv2d(history, 16, **kwargs)
         self.conv2 = torch_nn.Conv2d(16, 16, **kwargs)
-        self.conv3 = torch_nn.Conv2d(16, 9, **kwargs)
+        self.conv3 = torch_nn.Conv2d(16, 1, **kwargs)
 
     def forward(self, x):
         # Brute standardization
