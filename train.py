@@ -94,14 +94,14 @@ def main():
     history = model.history
     channel = model.channel.capitalize()
 
-    TRAIN_BATCH_SIZE = 32
-    VALID_BATCH_SIZE = len(EVALUATION_FRAMES)
+    train_batch_size = 32
+    valid_batch_size = len(EVALUATION_FRAMES)
 
-    TO_PREDICT = 1  # frame
-    end_frames = [frame + TO_PREDICT for frame in EVALUATION_FRAMES]
+    to_predict = 1  # frame
+    end_frames = [frame + to_predict for frame in EVALUATION_FRAMES]
 
-    get_window_train = lambda sample: sample.random_temporal_batches(1, TRAIN_BATCH_SIZE, history + TO_PREDICT)
-    get_window_valid = lambda sample: sample.selected_temporal_batches(VALID_BATCH_SIZE, history + TO_PREDICT, end_frames)
+    get_window_train = lambda sample: sample.random_temporal_batches(1, train_batch_size, history + to_predict)
+    get_window_valid = lambda sample: sample.selected_temporal_batches(valid_batch_size, history + to_predict, end_frames)
 
     collate_fn1 = partial(collate_fn, history, channel)
 
