@@ -20,7 +20,7 @@ CITIES = ["Berlin", "Istanbul", "Moscow"]
 
 START_FRAMES = [30, 69, 126, 186, 234]
 N_FRAMES = 3  # Predict this many frames into the future
-EVALUATION_FRAMES = [s + i for s in START_FRAMES for i in range(N_FRAMES)]
+SUBMISSION_FRAMES = [s + i for s in START_FRAMES for i in range(N_FRAMES)]
 
 
 def main():
