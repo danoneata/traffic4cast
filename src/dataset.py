@@ -145,7 +145,7 @@ class Traffic4CastSample(object):
 
         num_frames = self.data.shape[self.layout.find('T')]
         for batch in range(num_batches):
-            frames = random.sample(range(batch_size, num_frames), batch_size)
+            frames = random.sample(range(slice_size, num_frames), batch_size)
             yield torch.stack(
                 list(self.temporal_slices(slice_size, frames, valid=False)))
 

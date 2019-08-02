@@ -28,7 +28,7 @@ from models import MODELS
 
 from evaluate import CHANNELS, CITIES, EVALUATION_FRAMES, ROOT
 
-MAX_EPOCHS = 64
+MAX_EPOCHS = 1 #64
 PATIENCE = 8
 LR_REDUCE_PARAMS = {
     "factor": 0.2,
@@ -49,7 +49,7 @@ def collate_fn(history, channel, get_window, *args):
             t = window_layout.find('T')
 
             batch = select_channel(window, channel, window_layout)
-            batch = batch.float().cuda()
+            batch = batch.float() #.cuda()
             assert batch.shape[-1] == 1
             batch = batch.squeeze()
             assert len(batch.shape) == 4
@@ -74,6 +74,8 @@ def train(city,
     train_dataset = Traffic4CastDataset(ROOT, "training", cities=[city])
     valid_dataset = Traffic4CastDataset(ROOT, "validation", cities=[city])
 
+    print(hyper_params)
+
     def get_hyper_params(t):
         """Selects hyper-parameters whose key starts with `t`"""
         SEP = "_"  # separator
@@ -86,12 +88,12 @@ def train(city,
         }
 
     model = MODELS[model_type](**get_hyper_params("model"))
-    model.cuda()
+    # model.cuda()
 
     history = model.history
     channel = model.channel.capitalize()
 
-    TRAIN_BATCH_SIZE = 32
+    TRAIN_BATCH_SIZE = 4 #32
     VALID_BATCH_SIZE = len(EVALUATION_FRAMES)
 
     TO_PREDICT = 1  # frame
@@ -167,7 +169,16 @@ def train(city,
         torch.save(model.state_dict(), model_path)
         print("Model saved at:", model_path)
 
-    return {"loss": evaluator.state.metrics['loss']}
+    return ({
+				'loss': evaluator.state.metrics['loss'], # remember: HpBandSter always minimizes!
+				'info': {       
+							'city':     city,
+							'model':    model_type,
+                            'batch_size': TRAIN_BATCH_SIZE
+						}
+			})
+
+    {"loss": evaluator.state.metrics['loss']}
 
 
 def main():

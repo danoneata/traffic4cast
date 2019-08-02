@@ -7,8 +7,10 @@ dependencies:
     - pytorch::pytorch>=1.0
     - pytorch::torchvision
     - pytorch::ignite
-    - cudatoolkit=9.0
+    - cudatoolkit=10.0
     - numpy
     - h5py
     - matplotlib
     - tabulate
+    - plotly
+    - hpbandster
