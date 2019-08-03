@@ -1,8 +1,8 @@
-from models.baseline import Naive, Zeros, TemporalRegression
+import models.baseline
 import models.nn
 
 MODELS = {
-    "naive": Naive,
-    "zeros": Zeros,
-    "generic-temporal": lambda: models.nn.Temporal(12, 1, ["Speed"], models.nn.TemporalRegression(12)),
+    "naive": models.baseline.Naive,
+    "zeros": models.baseline.Zeros,
+    "temporal-regression-speed-12": lambda: models.nn.Temporal(12, 1, ["Speed"], models.nn.TemporalRegression(12)),
 }

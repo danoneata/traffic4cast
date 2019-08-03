@@ -54,7 +54,7 @@ class Temporal(torch_nn.Module):
         batch = batch.reshape(
             (batch.shape[0], -1, batch.shape[3], batch.shape[4]))
         result = (batch[:, :self.past * self.num_channels],
-                  batch[:, self.past * self.num_channels:, :, :])
+                  batch[:, self.past * self.num_channels:])
         return result
 
     def ignite_random(self, loader, num_minibatches, minibatch_size):
@@ -88,11 +88,10 @@ class TemporalRegression(torch_nn.Module):
         self.conv3 = torch_nn.Conv2d(16, 1, **kwargs)
 
     def forward(self, x):
-        # Brute standardization
         x = self.conv1(x)
         x = torch.relu(x)
         x = self.conv2(x)
         x = torch.relu(x)
         x = self.conv3(x)
         x = torch.sigmoid(x)
-        return 255 * x  # Rescale result to predict in [0, 255]
+        return x
