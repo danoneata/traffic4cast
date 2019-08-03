@@ -53,6 +53,11 @@ def main():
                         help=("which device to use. defaults to current cuda "
                               "device if present otherwise to current cpu")
                         )
+    parser.add_argument("--no-log-tensorboard",
+                        required=False,
+                        default=False,
+                        action='store_true',
+                        help="do not log to tensorboard format. Default false.")
     parser.add_argument("-v",
                         "--verbose",
                         action="count",
@@ -152,19 +157,20 @@ def main():
     evaluator.add_event_handler(engine.Events.EPOCH_COMPLETED,
                                 checkpoint_handler, {"model": model})
 
-    logger = tensorboard_logger.TensorboardLogger(
-        log_dir=f"output/tensorboard/{model_name}")
-    logger.attach(trainer,
-                  log_handler=tensorboard_logger.OutputHandler(
-                      tag="training",
-                      output_transform=lambda loss: {'loss': loss}),
-                  event_name=engine.Events.ITERATION_COMPLETED)
-    logger.attach(evaluator,
-                  log_handler=tensorboard_logger.OutputHandler(
-                      tag="validation",
-                      metric_names=["loss"],
-                      another_engine=trainer),
-                  event_name=engine.Events.EPOCH_COMPLETED)
+    if not args.no_log_tensorboard:
+        logger = tensorboard_logger.TensorboardLogger(
+            log_dir=f"output/tensorboard/{model_name}")
+        logger.attach(trainer,
+                      log_handler=tensorboard_logger.OutputHandler(
+                          tag="training",
+                          output_transform=lambda loss: {'loss': loss}),
+                      event_name=engine.Events.ITERATION_COMPLETED)
+        logger.attach(evaluator,
+                      log_handler=tensorboard_logger.OutputHandler(
+                          tag="validation",
+                          metric_names=["loss"],
+                          another_engine=trainer),
+                      event_name=engine.Events.EPOCH_COMPLETED)
 
     trainer.run(ignite_train, max_epochs=MAX_EPOCHS)
     torch.save(model.state_dict(), model_path)
