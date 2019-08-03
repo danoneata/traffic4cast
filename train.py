@@ -44,15 +44,15 @@ def main():
                         required=True,
                         choices=CITIES,
                         help="which city to evaluate")
-    parser.add_argument("-d",
-                        "--device",
-                        required=False,
-                        default='cuda',
-                        choices=['cpu', 'cuda', *[f"cuda:{n}" for n in range(8)]],
-                        type=str,
-                        help=("which device to use. defaults to current cuda "
-                              "device if present otherwise to current cpu")
-                        )
+    parser.add_argument(
+        "-d",
+        "--device",
+        required=False,
+        default='cuda',
+        choices=['cpu', 'cuda', *[f"cuda:{n}" for n in range(8)]],
+        type=str,
+        help=("which device to use. defaults to current cuda "
+              "device if present otherwise to current cpu"))
     parser.add_argument("--no-log-tensorboard",
                         required=False,
                         default=False,
