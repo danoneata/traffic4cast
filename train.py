@@ -47,9 +47,12 @@ def main():
     parser.add_argument("-d",
                         "--device",
                         required=False,
-                        default='cpu',
-                        choices=['cpu', 'cuda:0'],
-                        help="which device to use")
+                        default='cuda',
+                        choices=['cpu', 'cuda', *[f"cuda:{n}" for n in range(8)]],
+                        type=str,
+                        help=("which device to use. defaults to current cuda "
+                              "device if present otherwise to current cpu")
+                        )
     parser.add_argument("-v",
                         "--verbose",
                         action="count",
@@ -96,15 +99,18 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=0.04)
     loss = nn.MSELoss()
 
+    device = args.device
+    if device.find('cuda') != -1 and not torch.cuda.is_available():
+        device = 'cpu'
     trainer = engine.create_supervised_trainer(model,
                                                optimizer,
                                                loss,
-                                               device=args.device,
+                                               device=device,
                                                prepare_batch=model.ignite_batch)
     evaluator = engine.create_supervised_evaluator(
         model,
         metrics={'loss': ignite.metrics.Loss(loss)},
-        device=args.device,
+        device=device,
         prepare_batch=model.ignite_batch)
 
     @trainer.on(engine.Events.ITERATION_COMPLETED)
