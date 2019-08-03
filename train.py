@@ -73,7 +73,7 @@ def main():
 
     transforms = [
         lambda x: x.float(),
-        lambda x: (x - 128) / 255,
+        lambda x: x / 255,
         src.dataset.Traffic4CastSample.Transforms.Permute("TCHW"),
         src.dataset.Traffic4CastSample.Transforms.SelectChannels(
             model.channels),
