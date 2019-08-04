@@ -12,13 +12,12 @@ class Temporal(torch_nn.Module):
     """ Temporal model for a single single channel. Predicts the next value by
     considering a fixed history at the same coordinate. """
 
-    def __init__(self, past: int, future: int, channels: List[str],
+    def __init__(self, past: int, future: int, num_channels: int,
                  module: Union[torch_nn.Module, torch_nn.Sequential]):
         super(Temporal, self).__init__()
         self.past = past
         self.future = future
-        self.num_channels = len(channels)
-        self.channels = channels
+        self.num_channels = num_channels
         self.add_module('module', module)
 
     def forward(self, input):

@@ -4,5 +4,5 @@ import models.nn
 MODELS = {
     "naive": models.baseline.Naive,
     "zeros": models.baseline.Zeros,
-    "temporal-regression-speed-12": lambda: models.nn.Temporal(12, 1, ["Speed"], models.nn.TemporalRegression(12)),
+    "temporal-regression-speed-12": lambda: models.nn.Temporal(12, 1, 1, models.nn.TemporalRegression(12)),
 }
