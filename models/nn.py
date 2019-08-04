@@ -1,6 +1,7 @@
-from typing import List, Union
-import numpy as np
+from typing import List, Union, Dict
+import collections
 
+import numpy as np
 import torch
 import torch.nn as torch_nn
 
@@ -23,29 +24,58 @@ class Temporal(torch_nn.Module):
     def forward(self, input):
         return self.module(input)
 
-    def predict(self, frames: List[int],
-                sample: src.dataset.Traffic4CastSample):
-        predictions = {f: None for f in frames}
-        for frame, (slice, valid) in zip(
-                frames, sample.temporal_slices(self.past, frames, True)):
+    def predict(self, frames: List[int], sample: src.dataset.Traffic4CastSample
+               ) -> Dict[int, torch.tensor]:
+        """ Predict requested frames.
 
-            def fill_with_predicted():
-                for f in range(valid.shape[0]):
-                    if not valid[f]:
-                        replaced = False
-                        for pred_f in range(f, -self.future, f - self.future):
-                            if predictions[pred_f] is not None:
-                                i = (f - pred_f) * self.num_channels
-                                j = i + self.num_channels
-                                slice[f] = predictions[pred_f][i:j]
-                                break
-                        if not replaced:
-                            raise Exeception(f"Invalid frames for slice {f}.")
+            Predicts the requested frames for the given sample. If the frames
+            required to predict the current frames are invalid they will be
+            replaced with predicted frames.
 
-            if not valid.all():
-                fill_with_predicted()
+            Args:
+                frames: Frames for which to generate predictions.
+                sample: Sample for which to generate predictions.
 
-            predictions[frame] = self(slice.unsqueeze()).squeeze(0)
+            Return:
+                Dictionary map of frames to predictions tensors.
+
+            Reaise:
+                Exception: When the any frames necessary to predict the current
+                    frame are invaild and they cannot be replaced with already
+                    predicted frames.
+        """
+        predictions = collections.OrderedDict.fromkeys(frames)
+        self.eval()
+        with torch.no_grad():
+            for frame, (slice, valid) in zip(
+                    frames, sample.temporal_slices(self.past, frames, True)):
+
+                if predictions[frame] is not None:
+                    continue
+
+                if not valid.all():
+                    for f in range(valid.shape[0]):
+                        if not valid[f]:
+                            if predictions[f] is not None:
+                                slice[f] = predictions[f]
+                            else:
+                                raise Exeception(
+                                    f"Invalid frames for slice {f}.")
+
+                pred_slice = self(
+                    slice.reshape(-1, slice.shape[2],
+                                  slice.shape[3]).unsqueeze(0)).squeeze(0)
+                for pred_frame in range(pred_slice.shape[0] //
+                                        self.num_channels):
+                    predictions[frame +
+                                pred_frame] = pred_slice[pred_frame *
+                                                         self.num_channels:
+                                                         (pred_frame + 1) *
+                                                         self.num_channels]
+
+                for key in predictions.keys():
+                    if key not in frames:
+                        del predictions[key]
 
         return predictions
 
@@ -77,7 +107,7 @@ class Temporal(torch_nn.Module):
 
 
 class TemporalRegression(torch_nn.Module):
-    """ Simple 1 channel model. """
+    """ Simple 1 frame 1 channel model. """
 
     def __init__(self, history: int):
         super(TemporalRegression, self).__init__()
