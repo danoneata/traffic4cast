@@ -45,6 +45,12 @@ class Traffic4CastSample(object):
         self.channel_layout = None
         self.valid = None
 
+
+    def predicted_path(self, root):
+        filename, _ = os.path.splitext(os.path.basename(self.path))
+        return os.path.join(root, filename + "_predicted.npy")
+
+
     def load(self):
         """ Load the data sample in the .hdf5 file """
 
