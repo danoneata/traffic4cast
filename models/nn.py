@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import torch.nn as torch_nn
 
-import src
+import src.dataset
 
 
 class Temporal(torch_nn.Module):
