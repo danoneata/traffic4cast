@@ -1,6 +1,7 @@
 import argparse
 import os
 import pdb
+import sys
 
 from functools import partial
 
@@ -58,11 +59,27 @@ def main():
                         default=False,
                         action='store_true',
                         help="do not log to tensorboard format. Default false.")
+    parser.add_argument("--channels",
+                        default="Volume,Speed,Heading",
+                        help="List of channels to use.")
+    parser.add_argument("--minibatch-size",
+                        required=False,
+                        default=32,
+                        type=int,
+                        help="mini batch size. Default: 32")
+    parser.add_argument("--num-minibatches",
+                        default=16,
+                        type=int,
+                        help="number of minibatches per sample. Default: 16")
     parser.add_argument("-v",
                         "--verbose",
                         action="count",
                         help="verbosity level")
     args = parser.parse_args()
+    args = parser.parse_args()
+    args.channels = args.channels.split(',')
+    args.channels.sort(
+        key=lambda x: src.dataset.Traffic4CastSample.channel_to_index[x])
 
     print(args)
 
@@ -71,12 +88,17 @@ def main():
 
     model = MODELS[args.model]()
 
+    if model.num_channels != len(args.channels):
+        print(f"ERROR: Model to channels missmatch. Model can predict "
+              f"{model.num_channels} channels. {len(args.channels)} were "
+              "selected.")
+        sys.exit(1)
+
     transforms = [
         lambda x: x.float(),
         lambda x: x / 255,
         src.dataset.Traffic4CastSample.Transforms.Permute("TCHW"),
-        src.dataset.Traffic4CastSample.Transforms.SelectChannels(
-            model.channels),
+        src.dataset.Traffic4CastSample.Transforms.SelectChannels(args.channels),
     ]
     train_dataset = src.dataset.Traffic4CastDataset(ROOT, "training",
                                                     [args.city], transforms)
@@ -94,12 +116,9 @@ def main():
         collate_fn=src.dataset.Traffic4CastDataset.collate_list,
         shuffle=False)
 
-    num_minibatches = 2
-    minibatch_size = 8
-    slice_size = 15
-    ignite_train = model.ignite_random(train_loader, num_minibatches,
-                                       minibatch_size)
-    ignite_valid = model.ignite_all(valid_loader, num_minibatches)
+    ignite_train = model.ignite_random(train_loader, args.num_minibatches,
+                                       args.minibatch_size)
+    ignite_valid = model.ignite_all(valid_loader, args.minibatch_size)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.04)
     loss = nn.MSELoss()
