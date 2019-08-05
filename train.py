@@ -139,7 +139,7 @@ def main():
 
     @trainer.on(engine.Events.ITERATION_COMPLETED)
     def log_training_loss(trainer):
-        print("Epoch {:3d} Train loss: {:8.2f}".format(trainer.state.epoch,
+        print("Epoch {:3d} Train loss: {:8.6f}".format(trainer.state.epoch,
                                                        trainer.state.output))
 
     @trainer.on(engine.Events.EPOCH_COMPLETED)
