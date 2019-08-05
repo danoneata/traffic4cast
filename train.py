@@ -146,7 +146,7 @@ def main():
     def log_validation_loss(trainer):
         evaluator.run(ignite_valid)
         metrics = evaluator.state.metrics
-        print("Epoch {:3d} Valid loss: {:8.2f} ←".format(
+        print("Epoch {:3d} Valid loss: {:8.6f} ←".format(
             trainer.state.epoch, metrics['loss']))
 
     lr_reduce = lr_scheduler.ReduceLROnPlateau(optimizer,
