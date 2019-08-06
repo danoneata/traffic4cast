@@ -20,8 +20,14 @@ class Temporal(torch_nn.Module):
         self.num_channels = num_channels
         self.add_module('module', module)
 
+
+    def load(self, path):
+        self.load_state_dict(torch.load(path))
+
+
     def forward(self, input):
         return self.module(input)
+
 
     def predict(self, frames: List[int], sample: src.dataset.Traffic4CastSample
                ) -> Dict[int, torch.tensor]:
