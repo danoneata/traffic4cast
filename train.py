@@ -76,7 +76,6 @@ def main():
                         action="count",
                         help="verbosity level")
     args = parser.parse_args()
-    args = parser.parse_args()
     args.channels = args.channels.split(',')
     args.channels.sort(
         key=lambda x: src.dataset.Traffic4CastSample.channel_to_index[x])
