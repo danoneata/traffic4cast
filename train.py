@@ -1,5 +1,6 @@
 import argparse
 import os
+import os.path
 import pdb
 import sys
 
@@ -34,17 +35,21 @@ LR_REDUCE_PARAMS = {
 
 def main():
     parser = argparse.ArgumentParser(description="Evaluate a given model")
-    parser.add_argument("-m",
-                        "--model",
+    parser.add_argument("--model-type",
                         type=str,
                         required=True,
                         choices=MODELS,
-                        help="which model to use")
+                        help="which model type to train")
     parser.add_argument("-c",
-                        "--city",
+                        "--cities",
                         required=True,
-                        choices=CITIES,
-                        help="which city to evaluate")
+                        help="which cities to train on")
+    parser.add_argument("-m",
+                        "--model",
+                        type=str,
+                        default=None,
+                        required=False,
+                        help="path to model to load")
     parser.add_argument(
         "-d",
         "--device",
@@ -77,15 +82,20 @@ def main():
                         help="verbosity level")
     args = parser.parse_args()
     args.channels = args.channels.split(',')
+    args.cities = args.cities.split(',')
     args.channels.sort(
         key=lambda x: src.dataset.Traffic4CastSample.channel_to_index[x])
 
     print(args)
 
-    model_name = f"{args.model}_{args.city}"
-    model_path = f"output/models/{model_name}.pth"
-
-    model = MODELS[args.model]()
+    model = MODELS[args.model_type]()
+    if args.model is not None:
+        model_path = args.model
+        model_name = os.path.basename(args.model)
+        model.load(model_path)
+    else:
+        model_name = f"{args.model_type}_" + "_".join(args.channels + args.cities)
+        model_path = f"output/models/{model_name}.pth"
 
     if model.num_channels != len(args.channels):
         print(f"ERROR: Model to channels missmatch. Model can predict "
@@ -100,9 +110,9 @@ def main():
         src.dataset.Traffic4CastSample.Transforms.SelectChannels(args.channels),
     ]
     train_dataset = src.dataset.Traffic4CastDataset(ROOT, "training",
-                                                    [args.city], transforms)
+                                                    args.cities, transforms)
     valid_dataset = src.dataset.Traffic4CastDataset(ROOT, "validation",
-                                                    [args.city], transforms)
+                                                    args.cities, transforms)
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
