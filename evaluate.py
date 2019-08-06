@@ -20,11 +20,19 @@ ROOT = os.environ.get("ROOT", "data")
 CHANNELS = ["volume", "speed", "heading"]
 CITIES = ["Berlin", "Istanbul", "Moscow"]
 
-START_FRAMES = [30, 69, 126, 186, 234]
-N_FRAMES = 3  # Predict this many frames into the future
-SUBMISSION_FRAMES = [s + i for s in START_FRAMES for i in range(N_FRAMES)]
+BERLIN_START_FRAMES = [30, 69, 126, 186, 234]
+ISTANBUL_START_FRAMES = [57, 114, 174, 222, 258]
+MOSCOW_START_FRAMES = ISTANBUL_START_FRAMES
 
-SUBMISSION_SHAPE = (len(SUBMISSION_FRAMES), 495, 436, 3)
+N_FRAMES = 3  # Predict this many frames into the future
+SUBMISSION_FRAMES = {
+    city: [s + i for s in start_frames for i in range(N_FRAMES)]
+    for start_frames, city in
+    zip([BERLIN_START_FRAMES, ISTANBUL_START_FRAMES, MOSCOW_START_FRAMES],
+        CITIES)
+}
+
+SUBMISSION_SHAPE = (5 * N_FRAMES, 495, 436, 3)
 
 
 def main():
@@ -118,10 +126,11 @@ def main():
         for transform in channel_transforms:
             s = copy.deepcopy(sample)
             transform(s)
-            for f, p in model.predict(SUBMISSION_FRAMES, s).items():
+            for f, p in model.predict(SUBMISSION_FRAMES[args.city], s).items():
                 for c_i, c in enumerate(transform.channels):
-                    predictions[SUBMISSION_FRAMES.index(f), :, :, src.dataset.
-                                Traffic4CastSample.channel_to_index[c]] = p[c_i]
+                    predictions[SUBMISSION_FRAMES[args.city].
+                                index(f), :, :, src.dataset.Traffic4CastSample.
+                                channel_to_index[c]] = p[c_i]
 
         predictions = predictions * 255.0
         return predictions
@@ -145,7 +154,8 @@ def main():
         if args.split == "validation":
             sample.permute('THWC')
             gt = sample.data.index_select(
-                0, torch.tensor(SUBMISSION_FRAMES, dtype=torch.long)).numpy()
+                0, torch.tensor(SUBMISSION_FRAMES[args.city],
+                                dtype=torch.long)).numpy()
             mse = np.mean((gt - predictions)**2, axis=(0, 1, 2))
             errors.append(mse)
             if args.verbose:
