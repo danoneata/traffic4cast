@@ -23,9 +23,9 @@ import src.dataset
 
 from models import MODELS
 
-from evaluate import CHANNELS, CITIES, SUBMISSION_FRAMES, ROOT
+from evaluate import ROOT
 
-MAX_EPOCHS = 1
+MAX_EPOCHS = 16
 PATIENCE = 8
 LR_REDUCE_PARAMS = {
     "factor": 0.2,
@@ -94,7 +94,8 @@ def main():
         model_name = os.path.basename(args.model)
         model.load(model_path)
     else:
-        model_name = f"{args.model_type}_" + "_".join(args.channels + args.cities)
+        model_name = f"{args.model_type}_" + "_".join(args.channels +
+                                                      args.cities)
         model_path = f"output/models/{model_name}.pth"
 
     if model.num_channels != len(args.channels):
