@@ -1,11 +1,33 @@
 from typing import List, Union, Dict
 import collections
+import enum
 
 import numpy as np
 import torch
 import torch.nn as torch_nn
 
 import src.dataset
+
+
+class ReplacementMode(enum.Enum):
+    """ Enumeration of frame replacement modes for prediction.
+
+        ALL_FROM_PREDICTED - Given a sequence of F frames, denoted by the
+            frame indice [f0, f1,...,fi,...,fF-1] into the given sample stream
+            and a list of P, predicted, frames denoted by frame indices
+            [p0, p1,...,pk,...,pP-1], replace every frame, fi, of the sequence F
+            with predicted frames from the P list if fi in [p0, p1,..., pP-1].
+
+        INVALID_FROM_PREDICTED - Given a sequence of F frames, denoted by the
+            frame indice [f0, f1,...,fi,...,fF-1] into the given sample stream,
+            a list of booleans denoting the validity of each frame in the
+            sequence [vf0, vf1,...,vfi,...,vfF-1] and a list of P, predicted,
+            frames denoted by frame indices [p0, p1,...,pk,...,pP-1], replace
+            every frame, fi, of the sequence F with predicted frames from the P
+            list if vfi is False and fi in [p0, p1,..., pP-1].
+    """
+    ALL_FROM_PREDICTED = 0
+    INVALID_FROM_PREDICTED = 1
 
 
 class Temporal(torch_nn.Module):
@@ -20,29 +42,31 @@ class Temporal(torch_nn.Module):
         self.num_channels = num_channels
         self.add_module('module', module)
 
-
     def load(self, path):
         self.load_state_dict(torch.load(path))
-
 
     def forward(self, input):
         return self.module(input)
 
-
-    def predict(self, frames: List[int], sample: src.dataset.Traffic4CastSample
+    def predict(self,
+                frames: List[int],
+                sample: src.dataset.Traffic4CastSample,
+                mode: ReplacementMode = ReplacementMode.ALL_FROM_PREDICTED
                ) -> Dict[int, torch.tensor]:
         """ Predict requested frames.
 
-            Predicts the requested frames for the given sample. If the frames
-            required to predict the current frames are invalid they will be
-            replaced with predicted frames.
+            Predicts the requested frames for the given sample. For each frame
+            to predict the input frames are replaced with predicted frames
+            based on the selected replacement mode. The default replacement
+            mode is ReplacementMode.ALL_FROM_PREDICTED
 
             Args:
                 frames: Frames for which to generate predictions.
                 sample: Sample for which to generate predictions.
+                mode: Replacement mode.
 
             Return:
-                Dictionary map of frames to predictions tensors.
+                Dictionary map of frames indices to predicted frames(tensors).
 
             Reaise:
                 Exception: When the any frames necessary to predict the current
@@ -55,17 +79,30 @@ class Temporal(torch_nn.Module):
             for frame, (slice, valid) in zip(
                     frames, sample.temporal_slices(self.past, frames, True)):
 
+                # Don't predict again if already predicted.
                 if predictions[frame] is not None:
                     continue
 
-                if not valid.all():
-                    for f in range(valid.shape[0]):
-                        if not valid[f]:
-                            if predictions[f] is not None:
-                                slice[f] = predictions[f]
-                            else:
-                                raise Exeception(
-                                    f"Invalid frames for slice {f}.")
+                if mode == ReplacementMode.ALL_FROM_PREDICTED:
+                    for v, f in enumerate(range(frame - self.past, frame)):
+                        if (f in predictions.keys() and
+                                predictions[f] is not None):
+                            slice[v] = predictions[f]
+                            valid[v] = 1
+                    if not valid.all():
+                        raise Exception(f"Invalid frames for slice {f}.")
+                elif mode == ReplacementMode.INVALID_FROM_PREDICTED:
+                    if not valid.all():
+                        for v, f in enumerate(range(frame - self.past, frame)):
+                            if not valid[v]:
+                                if (f in predictions.keys() and
+                                        predictions[f] is not None):
+                                    slice[v] = predictions[f]
+                                else:
+                                    raise Exception(
+                                        f"Invalid frames for slice {f}.")
+                else:
+                    raise Exeception(f"Invalid frame repacement mode.")
 
                 pred_slice = self(
                     slice.reshape(-1, slice.shape[2],
@@ -78,9 +115,11 @@ class Temporal(torch_nn.Module):
                                                          (pred_frame + 1) *
                                                          self.num_channels]
 
-                for key in predictions.keys():
-                    if key not in frames:
-                        del predictions[key]
+            # The model might predict other frames then the requested ones.
+            # Remove from the result the frames that were not requested.
+            for key in predictions.keys():
+                if key not in frames:
+                    del predictions[key]
 
         return predictions
 
