@@ -24,6 +24,12 @@ class Traffic4CastSample(object):
             data (torch.tensor): 4D torch.tensor for the sample data.
             city (str): City where data sample was collected.
             date (datetime): Date when the data sample was collected.
+            layout (str): Current axes meaning.
+            channel_layout (str): Current channels meaning.
+            valid (torch.tensor): Boolean mask, over the frames, denoting the
+                validity of the frame.(In the test set the frames that are to
+                be predicted are set to zero, hence they are not valid to use
+                for predicting other frames.)
     """
     time_step_delta = datetime.timedelta(minutes=5)
     index_to_channel = {0: "Volume", 1: "Speed", 2: "Heading"}
@@ -45,11 +51,9 @@ class Traffic4CastSample(object):
         self.channel_layout = None
         self.valid = None
 
-
     def predicted_path(self, root):
         filename, _ = os.path.splitext(os.path.basename(self.path))
         return os.path.join(root, filename + "_predicted.npy")
-
 
     def load(self):
         """ Load the data sample in the .hdf5 file """
@@ -85,8 +89,8 @@ class Traffic4CastSample(object):
         time_axis = self.layout.find('T')
         for frame in frames:
             if valid:
-                yield (self.data.narrow(time_axis, frame - size,
-                                        size), self.valid[frame - size:frame])
+                yield (self.data.narrow(time_axis, frame - size, size),
+                       self.valid[frame - size:frame].clone())
             else:
                 yield self.data.narrow(time_axis, frame - size, size)
 
