@@ -131,13 +131,18 @@ class Temporal(torch_nn.Module):
                   batch[:, self.past * self.num_channels:])
         return result
 
-    def ignite_random(self, loader, num_minibatches, minibatch_size):
+    def ignite_random(self, loader, num_minibatches, minibatch_size,
+                      epoch_size):
+        num_batches = int(len(loader) * epoch_size)
         for batch in loader:
             for sample in batch:
                 for minibatch in sample.random_temporal_batches(
                         num_minibatches, minibatch_size,
                         self.past + self.future):
                     yield minibatch
+            num_batches -= 1
+            if (num_batches == 0):
+                return
 
     def ignite_all(self, loader, minibatch_size):
         for batch in loader:
