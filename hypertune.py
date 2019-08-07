@@ -83,8 +83,9 @@ def main():
     print(args)
 
     if not args.hostname and socket.gethostname().lower().startswith('lenovo'):
-        args.hostname = '10.90.100.16'
-    else:
+        # If we are on cluster set IP
+        args.hostname = hpns.nic_name_to_host('eno1')
+    elif not args.hostname:
         args.hostname = '127.0.0.1'
 
     logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"),
@@ -97,7 +98,6 @@ def main():
             "Berlin",
              "temporal-regression-speed-12",
              run_id=args.run_id,
-             id=0,
              host=args.hostname,
         )
         w.load_nameserver_credentials(working_directory=args.shared_directory)
