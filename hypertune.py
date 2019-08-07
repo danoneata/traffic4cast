@@ -93,12 +93,14 @@ def main():
 
     if args.worker:
         # Start a worker in listening mode (waiting for jobs from master)
-        w = PyTorchWorker("Berlin",
-                          "temporal-regression-speed-12",
-                          run_id=args.run_id,
-                          id=0,
-                          host=args.hostname,
-                          nameserver=args.hostname)
+        w = PyTorchWorker(
+            "Berlin",
+             "temporal-regression-speed-12",
+             run_id=args.run_id,
+             id=0,
+             host=args.hostname,
+        )
+        w.load_nameserver_credentials(working_directory=args.shared_directory)
         w.run(background=False)
         exit(0)
 
@@ -106,7 +108,12 @@ def main():
                                              overwrite=True)
 
     # Start a name server
-    name_server = hpns.NameServer(run_id=args.run_id, host=args.hostname, port=None)
+    name_server = hpns.NameServer(
+        run_id=args.run_id,
+        host=args.hostname,
+        port=0,
+        working_directory=args.shared_directory,
+    )
     ns_host, ns_port = name_server.start()
 
     # Run and optimizer
