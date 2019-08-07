@@ -62,14 +62,13 @@ def main():
                         action="store_true",
                         help="overwrite existing predictions if they exist")
     parser.add_argument("--channels",
-                        default="Volume,Speed,Heading",
+                        nargs='+',
                         help="List of channels to predict")
     parser.add_argument("-v",
                         "--verbose",
                         action="count",
                         help="verbosity level")
     args = parser.parse_args()
-    args.channels = args.channels.split(',')
     args.channels.sort(
         key=lambda x: src.dataset.Traffic4CastSample.channel_to_index[x])
 

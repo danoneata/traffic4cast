@@ -42,14 +42,27 @@ def main():
                         help="which model type to train")
     parser.add_argument("-c",
                         "--cities",
+                        nargs='+',
                         required=True,
                         help="which cities to train on")
+    parser.add_argument("--channels",
+                        nargs='+',
+                        help="List of channels to use.")
     parser.add_argument("-m",
                         "--model",
                         type=str,
                         default=None,
                         required=False,
                         help="path to model to load")
+    parser.add_argument("--minibatch-size",
+                        required=False,
+                        default=32,
+                        type=int,
+                        help="mini batch size. Default: 32")
+    parser.add_argument("--num-minibatches",
+                        default=16,
+                        type=int,
+                        help="number of minibatches per sample. Default: 16")
     parser.add_argument(
         "-d",
         "--device",
@@ -64,25 +77,11 @@ def main():
                         default=False,
                         action='store_true',
                         help="do not log to tensorboard format. Default false.")
-    parser.add_argument("--channels",
-                        default="Volume,Speed,Heading",
-                        help="List of channels to use.")
-    parser.add_argument("--minibatch-size",
-                        required=False,
-                        default=32,
-                        type=int,
-                        help="mini batch size. Default: 32")
-    parser.add_argument("--num-minibatches",
-                        default=16,
-                        type=int,
-                        help="number of minibatches per sample. Default: 16")
     parser.add_argument("-v",
                         "--verbose",
                         action="count",
                         help="verbosity level")
     args = parser.parse_args()
-    args.channels = args.channels.split(',')
-    args.cities = args.cities.split(',')
     args.channels.sort(
         key=lambda x: src.dataset.Traffic4CastSample.channel_to_index[x])
 
