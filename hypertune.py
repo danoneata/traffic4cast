@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import socket
 
 from train import train
 
@@ -70,7 +71,7 @@ def main():
     parser.add_argument('--worker',
                         help='Flag to turn this into a worker process',
                         action='store_true')
-    parser.add_argument('--host',
+    parser.add_argument('--hostname',
                         default='127.0.0.1', 
                         help='IP of name server.')
     parser.add_argument('--shared-directory',
@@ -81,7 +82,7 @@ def main():
     args = parser.parse_args()
     print(args)
 
-    if os.hostname.startwith('lenovo'):
+    if socket.gethostname().startswith('lenovo'):
         args.hostname = '10.90.100.16'
         print(f"WARN Running on lenovo")
         print(f"WARN Changes hostname to {args.hostname}")
@@ -94,9 +95,9 @@ def main():
         # Start a worker in listening mode (waiting for jobs from master)
         w = PyTorchWorker("Berlin",
                           "temporal-regression-speed-12",
-                          run_id=run_id,
+                          run_id=args.run_id,
                           id=0,
-                          nameserver=args.host)
+                          nameserver=args.hostname)
         w.run(background=False)
         exit(0)
 
@@ -104,7 +105,7 @@ def main():
                                              overwrite=True)
 
     # Start a nameserver
-    NS = hpns.NameServer(run_id=args.run_id, host=args.host, port=None)
+    NS = hpns.NameServer(run_id=args.run_id, host=args.hostname, port=None)
     NS.start()
 
     # Run and optimizer
