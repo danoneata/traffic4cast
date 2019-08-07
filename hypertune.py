@@ -6,17 +6,18 @@ from train import train
 
 import ConfigSpace as CS
 import ConfigSpace.hyperparameters as CSH
-from hpbandster.core.worker import Worker
+
 import hpbandster.core.nameserver as hpns
 import hpbandster.core.result as hpres
-from hpbandster.optimizers import HyperBand as HyperBand
+
+from hpbandster.core.worker import Worker
+from hpbandster.optimizers import HyperBand
 
 
 class PyTorchWorker(Worker):
 
     def __init__(self, city, model_type, **kwargs):
         super().__init__(**kwargs)
-        # Do init stuff
         self.city = city
         self.model_type = model_type
 
@@ -47,31 +48,43 @@ class PyTorchWorker(Worker):
 def main():
     parser = argparse.ArgumentParser(
         description='Parallel execution of hyper-tuning')
-    parser.add_argument('--min_budget',
+    parser.add_argument('--run-id',
+                        required=True,
+                        help='Name of the run')
+    parser.add_argument('--min-budget',
                         type=float,
-                        help='Minimum budget used during the optimization.',
+                        help='Minimum budget used during the optimization',
                         default=1)
-    parser.add_argument('--max_budget',
+    parser.add_argument('--max-budget',
                         type=float,
-                        help='Maximum budget used during the optimization.',
+                        help='Maximum budget used during the optimization',
                         default=10)
-    parser.add_argument('--n_iterations',
+    parser.add_argument('--n-iterations',
                         type=int,
                         help='Number of iterations performed by the optimizer',
                         default=1)
-    parser.add_argument('--n_workers',
+    parser.add_argument('--n-workers',
                         type=int,
-                        help='Number of workers to run in parallel.',
+                        help='Number of workers to run in parallel',
                         default=3)
     parser.add_argument('--worker',
                         help='Flag to turn this into a worker process',
                         action='store_true')
-    parser.add_argument('--shared_directory',
+    parser.add_argument('--host',
+                        default='127.0.0.1', 
+                        help='IP of name server.')
+    parser.add_argument('--shared-directory',
                         type=str,
                         help=('A directory that is accessible '
-                              'for all processes, e.g. a NFS share.'),
-                        default='./results')
+                              'for all processes, e.g. a NFS share'),
+                        default='output/hypertune')
     args = parser.parse_args()
+    print(args)
+
+    if os.hostname.startwith('lenovo'):
+        args.hostname = '10.90.100.16'
+        print(f"WARN Running on lenovo")
+        print(f"WARN Changes hostname to {args.hostname}")
 
     logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"),
                         format='%(asctime)s %(message)s',
@@ -81,9 +94,9 @@ def main():
         # Start a worker in listening mode (waiting for jobs from master)
         w = PyTorchWorker("Berlin",
                           "temporal-regression-speed-12",
-                          run_id="t4cast",
+                          run_id=run_id,
                           id=0,
-                          nameserver='127.0.0.1')
+                          nameserver=args.host)
         w.run(background=False)
         exit(0)
 
@@ -91,14 +104,14 @@ def main():
                                              overwrite=True)
 
     # Start a nameserver
-    NS = hpns.NameServer(run_id='t4cast', host='127.0.0.1', port=None)
+    NS = hpns.NameServer(run_id=args.run_id, host=args.host, port=None)
     NS.start()
 
     # Run and optimizer
     bohb = HyperBand(
         configspace=PyTorchWorker.get_configspace(
         ),  # model can be an arg here?
-        run_id='t4cast',
+        run_id=args.run_id,
         result_logger=result_logger,
         eta=3,
         min_budget=args.min_budget,

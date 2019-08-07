@@ -28,7 +28,9 @@ from models import MODELS
 
 from evaluate import CHANNELS, CITIES, EVALUATION_FRAMES, ROOT
 
-MAX_EPOCHS = 1 #64
+DEBUG = os.environ.get("DEBUG", "")
+
+MAX_EPOCHS = 64
 PATIENCE = 8
 LR_REDUCE_PARAMS = {
     "factor": 0.2,
@@ -93,7 +95,7 @@ def train(city,
     history = model.history
     channel = model.channel.capitalize()
 
-    TRAIN_BATCH_SIZE = 4 #32
+    TRAIN_BATCH_SIZE = 32
     VALID_BATCH_SIZE = len(EVALUATION_FRAMES)
 
     TO_PREDICT = 1  # frame
@@ -106,6 +108,11 @@ def train(city,
 
     collate_fn_train = partial(collate_fn1, get_window_train)
     collate_fn_valid = partial(collate_fn1, get_window_valid)
+
+    if DEBUG:
+        idxs = [1, 2, 3, 4, 5]
+        train_dataset = Subset(train_dataset, idxs)
+        valid_dataset = Subset(valid_dataset, idxs)
 
     train_loader = DataLoader(
         train_dataset,
@@ -169,17 +176,14 @@ def train(city,
         torch.save(model.state_dict(), model_path)
         print("Model saved at:", model_path)
 
-    return ({
-				'loss': evaluator.state.metrics['loss'], # remember: HpBandSter always minimizes!
-				'info': {       
-							'city':     city,
-							'model':    model_type,
-                            'batch_size': TRAIN_BATCH_SIZE
-						}
-			})
-
-    {"loss": evaluator.state.metrics['loss']}
-
+    return {
+        'loss': evaluator.state.metrics['loss'], # HpBandSter always minimizes!
+        'info': {
+            'city': city,
+            'model': model_type,
+            'batch_size': TRAIN_BATCH_SIZE,
+        },
+    }
 
 def main():
     parser = argparse.ArgumentParser(description="Evaluate a given model")

@@ -18,4 +18,3 @@ killall python
 sleep 1
 printf "DONE"
 exit 1
- 
