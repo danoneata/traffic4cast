@@ -72,7 +72,7 @@ def main():
                         help='Flag to turn this into a worker process',
                         action='store_true')
     parser.add_argument('--hostname',
-                        default='127.0.0.1', 
+                        default=None,
                         help='IP of name server.')
     parser.add_argument('--shared-directory',
                         type=str,
@@ -82,10 +82,10 @@ def main():
     args = parser.parse_args()
     print(args)
 
-    if socket.gethostname().startswith('lenovo'):
+    if not args.hostname and socket.gethostname().lower().startswith('lenovo'):
         args.hostname = '10.90.100.16'
-        print(f"WARN Running on lenovo")
-        print(f"WARN Changes hostname to {args.hostname}")
+    else:
+        args.hostname = '127.0.0.1'
 
     logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"),
                         format='%(asctime)s %(message)s',
@@ -97,6 +97,7 @@ def main():
                           "temporal-regression-speed-12",
                           run_id=args.run_id,
                           id=0,
+                          host=args.hostname,
                           nameserver=args.hostname)
         w.run(background=False)
         exit(0)
@@ -104,25 +105,28 @@ def main():
     result_logger = hpres.json_result_logger(directory=args.shared_directory,
                                              overwrite=True)
 
-    # Start a nameserver
-    NS = hpns.NameServer(run_id=args.run_id, host=args.hostname, port=None)
-    NS.start()
+    # Start a name server
+    name_server = hpns.NameServer(run_id=args.run_id, host=args.hostname, port=None)
+    ns_host, ns_port = name_server.start()
 
     # Run and optimizer
     bohb = HyperBand(
-        configspace=PyTorchWorker.get_configspace(
-        ),  # model can be an arg here?
+        configspace=PyTorchWorker.get_configspace(),  # model can be an arg here?
         run_id=args.run_id,
         result_logger=result_logger,
         eta=3,
+        host=args.hostname,
+        nameserver=ns_host,
+        nameserver_port=ns_port,
         min_budget=args.min_budget,
-        max_budget=args.max_budget)
+        max_budget=args.max_budget,
+    )
 
     res = bohb.run(n_iterations=args.n_iterations, min_n_workers=args.n_workers)
 
     # After the optimizer run, we must shutdown the master and the nameserver.
     bohb.shutdown(shutdown_workers=True)
-    NS.shutdown()
+    name_server.shutdown()
 
     id2config = res.get_id2config_mapping()
     incumbent = res.get_incumbent_id()
