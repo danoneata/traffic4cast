@@ -54,6 +54,25 @@ def main():
                         default=None,
                         required=False,
                         help="path to model to load")
+
+    def epoch_fraction(fraction):
+        try:
+            fraction = float(fraction)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"Must be floating point.")
+        if (fraction <= 0 or fraction > 1.0):
+            raise argparse.ArgumentTypeError(f"Must be in (0, 1.0]")
+        else:
+            return fraction
+
+    parser.add_argument("--epoch-fraction",
+                        required=False,
+                        default=0.5,
+                        type=epoch_fraction,
+                        help=("fraction of the training set to use each epoch."
+                              "Value must be in (0, 1.0] Default: 0.5."
+                              "At least one sample will be used if the fraction"
+                              "is less than a sample."))
     parser.add_argument("--minibatch-size",
                         required=False,
                         default=32,
@@ -125,11 +144,8 @@ def main():
         collate_fn=src.dataset.Traffic4CastDataset.collate_list,
         shuffle=False)
 
-    # Use only 50% of the data samples each epoch. The samples are randomly
-    # selected each epoch.
-    epoch_fraction = 0.5
     ignite_train = model.ignite_random(train_loader, args.num_minibatches,
-                                       args.minibatch_size, epoch_fraction)
+                                       args.minibatch_size, args.epoch_fraction)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.04)
     loss = nn.MSELoss()
@@ -162,7 +178,7 @@ def main():
         trainer.state.dataloader = model.ignite_random(train_loader,
                                                        args.num_minibatches,
                                                        args.minibatch_size,
-                                                       epoch_fraction)
+                                                       args.epoch_fraction)
 
     lr_reduce = lr_scheduler.ReduceLROnPlateau(optimizer,
                                                verbose=args.verbose,
