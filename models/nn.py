@@ -141,7 +141,7 @@ class Temporal(torch_nn.Module):
                         self.past + self.future):
                     yield minibatch
             num_batches -= 1
-            if (num_batches == 0):
+            if num_batches == 0:
                 return
 
     def ignite_all(self, loader, minibatch_size):
