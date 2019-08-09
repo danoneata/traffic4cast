@@ -1,6 +1,8 @@
 import argparse
 import os
+import os.path
 import pdb
+import sys
 
 from functools import partial
 
@@ -9,26 +11,21 @@ from itertools import cycle
 import numpy as np
 
 import torch
+import torch.nn as nn
+import torch.optim.lr_scheduler as lr_scheduler
+import torch.utils.data
 
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch.nn import MSELoss
-from torch.utils.data import DataLoader, Subset
+import ignite.engine as engine
+import ignite.handlers
+import ignite.contrib.handlers.tensorboard_logger as tensorboard_logger
 
-from ignite.engine import Events, create_supervised_trainer, create_supervised_evaluator
-from ignite.handlers import EarlyStopping, ModelCheckpoint
-from ignite.metrics import Loss
-
-from ignite.contrib.handlers.tensorboard_logger import TensorboardLogger, OutputHandler
-
-from src.dataset import Traffic4CastSample, Traffic4CastDataset
-
-from utils import sliding_window
+import src.dataset
 
 from models import MODELS
 
-from evaluate import CHANNELS, CITIES, SUBMISSION_FRAMES, ROOT
+from evaluate import ROOT
 
-MAX_EPOCHS = 64
+MAX_EPOCHS = 16
 PATIENCE = 8
 LR_REDUCE_PARAMS = {
     "factor": 0.2,
@@ -36,115 +33,158 @@ LR_REDUCE_PARAMS = {
 }
 
 
-def select_channel(data, channel, layout):
-    c = layout.find('C')
-    i = Traffic4CastSample.channel_to_index[channel]
-    return data.narrow(c, i, 1)
-
-
-def collate_fn(history, channel, get_window, *args):
-    for sample in Traffic4CastDataset.collate_list(*args):
-        for window in get_window(sample):
-            window_layout = "B" + sample.layout
-            t = window_layout.find('T')
-
-            batch = select_channel(window, channel, window_layout)
-            batch = batch.float().cuda()
-            assert batch.shape[-1] == 1
-            batch = batch.squeeze()
-            assert len(batch.shape) == 4
-
-            tr_batch = batch.narrow(t, 0, history)
-            te_batch = batch.narrow(t, history, 1)
-
-            print(sample.date, end=" ")
-            return tr_batch, te_batch
-
-
 def main():
     parser = argparse.ArgumentParser(description="Evaluate a given model")
-    parser.add_argument("-m",
-                        "--model",
+    parser.add_argument("--model-type",
                         type=str,
                         required=True,
                         choices=MODELS,
-                        help="which model to use")
+                        help="which model type to train")
     parser.add_argument("-c",
-                        "--city",
+                        "--cities",
+                        nargs='+',
                         required=True,
-                        choices=CITIES,
-                        help="which city to evaluate")
+                        help="which cities to train on")
+    parser.add_argument("--channels",
+                        nargs='+',
+                        help="List of channels to use.")
+    parser.add_argument("-m",
+                        "--model",
+                        type=str,
+                        default=None,
+                        required=False,
+                        help="path to model to load")
+
+    def epoch_fraction(fraction):
+        try:
+            fraction = float(fraction)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"Must be floating point.")
+        if (fraction <= 0 or fraction > 1.0):
+            raise argparse.ArgumentTypeError(f"Must be in (0, 1.0]")
+        else:
+            return fraction
+
+    parser.add_argument("--epoch-fraction",
+                        required=False,
+                        default=0.5,
+                        type=epoch_fraction,
+                        help=("fraction of the training set to use each epoch."
+                              "Value must be in (0, 1.0] Default: 0.5."
+                              "At least one sample will be used if the fraction"
+                              "is less than a sample."))
+    parser.add_argument("--minibatch-size",
+                        required=False,
+                        default=32,
+                        type=int,
+                        help="mini batch size. Default: 32")
+    parser.add_argument("--num-minibatches",
+                        default=16,
+                        type=int,
+                        help="number of minibatches per sample. Default: 16")
+    parser.add_argument(
+        "-d",
+        "--device",
+        required=False,
+        default='cuda',
+        choices=['cpu', 'cuda', *[f"cuda:{n}" for n in range(8)]],
+        type=str,
+        help=("which device to use. defaults to current cuda "
+              "device if present otherwise to current cpu"))
+    parser.add_argument("--no-log-tensorboard",
+                        required=False,
+                        default=False,
+                        action='store_true',
+                        help="do not log to tensorboard format. Default false.")
     parser.add_argument("-v",
                         "--verbose",
                         action="count",
                         help="verbosity level")
     args = parser.parse_args()
+    args.channels.sort(
+        key=lambda x: src.dataset.Traffic4CastSample.channel_to_index[x])
 
     print(args)
 
-    model_name = f"{args.model}_{args.city}"
-    model_path = f"output/models/{model_name}.pth"
+    model = MODELS[args.model_type]()
+    if args.model is not None:
+        model_path = args.model
+        model_name = os.path.basename(args.model)
+        model.load(model_path)
+    else:
+        model_name = f"{args.model_type}_" + "_".join(args.channels +
+                                                      args.cities)
+        model_path = f"output/models/{model_name}.pth"
 
-    train_dataset = Traffic4CastDataset(ROOT, "training", cities=[args.city])
-    valid_dataset = Traffic4CastDataset(ROOT, "validation", cities=[args.city])
+    if model.num_channels != len(args.channels):
+        print(f"ERROR: Model to channels missmatch. Model can predict "
+              f"{model.num_channels} channels. {len(args.channels)} were "
+              "selected.")
+        sys.exit(1)
 
-    model = MODELS[args.model]()
-    model.cuda()
+    transforms = [
+        lambda x: x.float(),
+        lambda x: x / 255,
+        src.dataset.Traffic4CastSample.Transforms.Permute("TCHW"),
+        src.dataset.Traffic4CastSample.Transforms.SelectChannels(args.channels),
+    ]
+    train_dataset = src.dataset.Traffic4CastDataset(ROOT, "training",
+                                                    args.cities, transforms)
+    valid_dataset = src.dataset.Traffic4CastDataset(ROOT, "validation",
+                                                    args.cities, transforms)
 
-    history = model.history
-    channel = model.channel.capitalize()
-
-    train_batch_size = 32
-    valid_batch_size = len(SUBMISSION_FRAMES)
-
-    to_predict = 1  # frame
-    end_frames = [frame + to_predict for frame in SUBMISSION_FRAMES]
-
-    get_window_train = lambda sample: sample.random_temporal_batches(1, train_batch_size, history + to_predict)
-    get_window_valid = lambda sample: sample.selected_temporal_batches(valid_batch_size, history + to_predict, end_frames)
-
-    collate_fn1 = partial(collate_fn, history, channel)
-
-    collate_fn_train = partial(collate_fn1, get_window_train)
-    collate_fn_valid = partial(collate_fn1, get_window_valid)
-
-    train_loader = DataLoader(
+    train_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=1,
-        collate_fn=collate_fn_train,
-        shuffle=True,
-    )
-    valid_loader = DataLoader(
+        collate_fn=src.dataset.Traffic4CastDataset.collate_list,
+        shuffle=True)
+    valid_loader = torch.utils.data.DataLoader(
         valid_dataset,
         batch_size=1,
-        collate_fn=collate_fn_valid,
-        shuffle=False,
-    )
+        collate_fn=src.dataset.Traffic4CastDataset.collate_list,
+        shuffle=False)
+
+    ignite_train = model.ignite_random(train_loader, args.num_minibatches,
+                                       args.minibatch_size, args.epoch_fraction)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.04)
-    loss = MSELoss()
+    loss = nn.MSELoss()
 
-    trainer = create_supervised_trainer(model, optimizer, loss)
-    evaluator = create_supervised_evaluator(model, metrics={'loss': Loss(loss)})
+    device = args.device
+    if device.find('cuda') != -1 and not torch.cuda.is_available():
+        device = 'cpu'
+    trainer = engine.create_supervised_trainer(model,
+                                               optimizer,
+                                               loss,
+                                               device=device,
+                                               prepare_batch=model.ignite_batch)
+    evaluator = engine.create_supervised_evaluator(
+        model,
+        metrics={'loss': ignite.metrics.Loss(loss)},
+        device=device,
+        prepare_batch=model.ignite_batch)
 
-    @trainer.on(Events.ITERATION_COMPLETED)
+    @trainer.on(engine.Events.ITERATION_COMPLETED)
     def log_training_loss(trainer):
-        print("Epoch {:3d} Train loss: {:8.2f}".format(trainer.state.epoch,
+        print("Epoch {:3d} Train loss: {:8.6f}".format(trainer.state.epoch,
                                                        trainer.state.output))
 
-    @trainer.on(Events.EPOCH_COMPLETED)
+    @trainer.on(engine.Events.EPOCH_COMPLETED)
     def log_validation_loss(trainer):
-        evaluator.run(valid_loader)
+        evaluator.run(model.ignite_all(valid_loader, args.minibatch_size))
         metrics = evaluator.state.metrics
-        print("Epoch {:3d} Valid loss: {:8.2f} ←".format(
+        print("Epoch {:3d} Valid loss: {:8.6f} ←".format(
             trainer.state.epoch, metrics['loss']))
+        trainer.state.dataloader = model.ignite_random(train_loader,
+                                                       args.num_minibatches,
+                                                       args.minibatch_size,
+                                                       args.epoch_fraction)
 
-    # Learning rate scheduler
-    lr_reduce = ReduceLROnPlateau(optimizer,
-                                  verbose=args.verbose,
-                                  **LR_REDUCE_PARAMS)
+    lr_reduce = lr_scheduler.ReduceLROnPlateau(optimizer,
+                                               verbose=args.verbose,
+                                               **LR_REDUCE_PARAMS)
 
-    @evaluator.on(Events.COMPLETED)
+    @evaluator.on(engine.Events.COMPLETED)
     def update_lr_reduce(engine):
         loss = engine.state.metrics['loss']
         lr_reduce.step(loss)
@@ -152,37 +192,37 @@ def main():
     def score_function(engine):
         return -engine.state.metrics['loss']
 
-    # Early stopping
-    early_stopping_handler = EarlyStopping(patience=PATIENCE,
-                                           score_function=score_function,
-                                           trainer=trainer)
-    evaluator.add_event_handler(Events.EPOCH_COMPLETED, early_stopping_handler)
+    early_stopping_handler = ignite.handlers.EarlyStopping(
+        patience=PATIENCE, score_function=score_function, trainer=trainer)
+    evaluator.add_event_handler(engine.Events.EPOCH_COMPLETED,
+                                early_stopping_handler)
 
-    # Model checkpoint
-    checkpoint_handler = ModelCheckpoint("output/models/checkpoints",
-                                         model_name,
-                                         score_function=score_function,
-                                         n_saved=5,
-                                         require_empty=False,
-                                         create_dir=True)
-    evaluator.add_event_handler(Events.EPOCH_COMPLETED, checkpoint_handler,
-                                {"model": model})
+    checkpoint_handler = ignite.handlers.ModelCheckpoint(
+        "output/models/checkpoints",
+        model_name,
+        score_function=score_function,
+        n_saved=5,
+        require_empty=False,
+        create_dir=True)
+    evaluator.add_event_handler(engine.Events.EPOCH_COMPLETED,
+                                checkpoint_handler, {"model": model})
 
-    # Tensorboard
-    tensorboard_logger = TensorboardLogger(
-        log_dir=f"output/tensorboard/{model_name}")
-    tensorboard_logger.attach(trainer,
-                              log_handler=OutputHandler(
-                                  tag="training",
-                                  output_transform=lambda loss: {'loss': loss}),
-                              event_name=Events.ITERATION_COMPLETED)
-    tensorboard_logger.attach(evaluator,
-                              log_handler=OutputHandler(tag="validation",
-                                                        metric_names=["loss"],
-                                                        another_engine=trainer),
-                              event_name=Events.EPOCH_COMPLETED)
+    if not args.no_log_tensorboard:
+        logger = tensorboard_logger.TensorboardLogger(
+            log_dir=f"output/tensorboard/{model_name}")
+        logger.attach(trainer,
+                      log_handler=tensorboard_logger.OutputHandler(
+                          tag="training",
+                          output_transform=lambda loss: {'loss': loss}),
+                      event_name=engine.Events.ITERATION_COMPLETED)
+        logger.attach(evaluator,
+                      log_handler=tensorboard_logger.OutputHandler(
+                          tag="validation",
+                          metric_names=["loss"],
+                          another_engine=trainer),
+                      event_name=engine.Events.EPOCH_COMPLETED)
 
-    trainer.run(train_loader, max_epochs=MAX_EPOCHS)
+    trainer.run(ignite_train, max_epochs=MAX_EPOCHS)
     torch.save(model.state_dict(), model_path)
     print("Model saved at:", model_path)
 
