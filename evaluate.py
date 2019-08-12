@@ -132,9 +132,12 @@ def main():
             transform(s)
             for f, p in model.predict(SUBMISSION_FRAMES[args.city], s).items():
                 for c_i, c in enumerate(transform.channels):
-                    predictions[SUBMISSION_FRAMES[args.city].
-                                index(f), :, :, src.dataset.Traffic4CastSample.
-                                channel_to_index[c]] = p[c_i]
+                    predictions[
+                        SUBMISSION_FRAMES[args.city].index(f),
+                        :,
+                        :,
+                        src.dataset.Traffic4CastSample.channel_to_index[c]
+                    ] = p[c_i]
 
         predictions = predictions * 255.0
         predictions = predictions.reshape(SUBMISSION_SHAPE)
@@ -158,15 +161,20 @@ def main():
     errors = []
     for sample in loader:
         sample = sample[0]
-        predictions = cached_predict(sample.predicted_path(dirname), sample,
-                                     selected_channels_transforms)
-        predictions = predictions / 255.0
-        predictions = predictions.reshape(*EVALUATION_SHAPE)
+        predictions = cached_predict(
+            sample.predicted_path(dirname),
+            sample,
+            selected_channels_transforms,
+        )
         if args.split == "validation":
+            # Prepare predictions
+            predictions = predictions / 255.0
+            predictions = predictions.reshape(*EVALUATION_SHAPE)
+            # Prepare groundtruth
             sample.permute('THWC')
-            gt = sample.data.index_select(
-                0, torch.tensor(SUBMISSION_FRAMES[args.city],
-                                dtype=torch.long)).numpy()
+            i = torch.tensor(SUBMISSION_FRAMES[args.city], dtype=torch.long)
+            gt = sample.data.index_select(0, i).numpy()
+            # Compute error
             mse = np.mean((gt - predictions)**2, axis=(0, 1, 2))
             errors.append(mse)
             if args.verbose:
