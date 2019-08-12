@@ -80,6 +80,7 @@ def main():
         data = {c: load_data(os.path.join(folders[c], filename)) for c in evaluate.CHANNELS}
         data_output = [select_channel(data[c], c) for c in evaluate.CHANNELS]
         data_output = np.stack(data_output, axis=-1)
+        data_output = data_output.astype(np.uint8)
         submission_write.write_data(data_output, os.path.join(folder_output, filename))
 
 
