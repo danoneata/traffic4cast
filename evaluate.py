@@ -35,6 +35,10 @@ SUBMISSION_FRAMES = {
 SUBMISSION_SHAPE = (5 * N_FRAMES, 495, 436, 3)
 
 
+def get_prediction_folder(split, model_name, city):
+    return os.path.join("output", "predictions", split, model_name, city)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Evaluate a given model")
     parser.add_argument("-m",
@@ -139,8 +143,12 @@ def main():
     cached_predict = lambda path, *args: cache(predict, path, to_overwrite,
                                                *args)
 
-    dirname = os.path.join("output", "predictions", args.split, args.model,
-                           args.city)
+    if args.model_path:
+        model_name, _ = os.path.splitext(os.path.basename(args.model_path))
+    else:
+        model_name = args.model
+
+    dirname = get_prediction_folder(args.split, model_name, args.city)
     os.makedirs(dirname, exist_ok=True)
 
     to_str = lambda v: f"{v:7.5f}"
