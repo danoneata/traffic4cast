@@ -32,7 +32,8 @@ SUBMISSION_FRAMES = {
         CITIES)
 }
 
-SUBMISSION_SHAPE = (5 * N_FRAMES, 495, 436, 3)
+EVALUATION_SHAPE = (5 * N_FRAMES, 495, 436, 3)
+SUBMISSION_SHAPE = (5, N_FRAMES, 495, 436, 3)
 
 
 def get_prediction_folder(split, model_name, city):
@@ -125,7 +126,7 @@ def main():
         collate_fn=src.dataset.Traffic4CastDataset.collate_list)
 
     def predict(sample, channel_transforms):
-        predictions = np.zeros(SUBMISSION_SHAPE)
+        predictions = np.zeros(EVALUATION_SHAPE)
         for transform in channel_transforms:
             s = copy.deepcopy(sample)
             transform(s)
@@ -136,6 +137,7 @@ def main():
                                 channel_to_index[c]] = p[c_i]
 
         predictions = predictions * 255.0
+        predictions = predictions.reshape(SUBMISSION_SHAPE)
         return predictions
 
     # Cache predictions to a specified path
@@ -157,7 +159,9 @@ def main():
     for sample in loader:
         sample = sample[0]
         predictions = cached_predict(sample.predicted_path(dirname), sample,
-                                     selected_channels_transforms) / 255.0
+                                     selected_channels_transforms)
+        predictions = predictions / 255.0
+        predictions = predictions.reshape(*EVALUATION_SHAPE)
         if args.split == "validation":
             sample.permute('THWC')
             gt = sample.data.index_select(
