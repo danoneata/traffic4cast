@@ -53,10 +53,7 @@ def main():
     def select_channel(data, channel):
         # data has shape (N, T, W, H, C)
         i = src.dataset.Traffic4CastSample.channel_to_index[channel.capitalize()]
-        try:
-            return data[:, :, :, :, i]
-        except:
-            pdb.set_trace()
+        return data[:, :, :, :, i]
 
     load_data = lambda path: np.array(h5py.File(path, 'r')['array'])
     folders = {
