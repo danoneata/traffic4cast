@@ -11,6 +11,10 @@ import torch
 import torch.utils.data
 
 
+SEED = 1337
+random.seed(SEED)
+
+
 def path_to_date(path: str) -> datetime.datetime:
     return datetime.datetime.strptime(
         os.path.basename(path).split('_')[0], '%Y%m%d')

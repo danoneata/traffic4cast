@@ -25,12 +25,16 @@ from models import MODELS
 
 from evaluate import ROOT
 
+SEED = 1337
 MAX_EPOCHS = 16
 PATIENCE = 8
 LR_REDUCE_PARAMS = {
     "factor": 0.2,
     "patience": 4,
 }
+
+
+torch.manual_seed(SEED)
 
 
 def main():
