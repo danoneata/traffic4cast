@@ -231,16 +231,17 @@ class TemporalDate(torch_nn.Module):
                 else:
                     raise Exeception(f"Invalid frame repacement mode.")
 
-                pred_slice = self(
-                    slice.reshape(-1, slice.shape[2],
-                                  slice.shape[3]).unsqueeze(0)).squeeze(0)
+                inp = (
+                    slice.reshape(-1, slice.shape[2], slice.shape[3]).unsqueeze(0),
+                    sample.date,
+                    [frame],
+                )
+                pred_slice = self(inp).squeeze(0)
                 for pred_frame in range(pred_slice.shape[0] //
                                         self.num_channels):
-                    predictions[frame +
-                                pred_frame] = pred_slice[pred_frame *
-                                                         self.num_channels:
-                                                         (pred_frame + 1) *
-                                                         self.num_channels]
+                    s = pred_frame * self.num_channels
+                    e = (pred_frame + 1) * self.num_channels
+                    predictions[frame + pred_frame] = pred_slice[s: e]
 
             # The model might predict other frames then the requested ones.
             # Remove from the result the frames that were not requested.
@@ -251,7 +252,7 @@ class TemporalDate(torch_nn.Module):
         return predictions
 
     def ignite_batch(self, batch, device, non_blocking):
-        batch1, date = batch
+        batch1, date, frames = batch
         batch1 = batch1.to(device)
         batch1 = batch1.reshape(
             batch1.shape[0],
@@ -259,7 +260,7 @@ class TemporalDate(torch_nn.Module):
             batch1.shape[3],
             batch1.shape[4],
         )
-        inp = batch1[:, :self.past * self.num_channels], date
+        inp = batch1[:, :self.past * self.num_channels], date, frames
         tgt = batch1[:, self.past * self.num_channels:]
         return inp, tgt
 
@@ -268,10 +269,11 @@ class TemporalDate(torch_nn.Module):
         num_batches = int(len(loader) * epoch_fraction)
         for batch in loader:
             for sample in batch:
-                for minibatch in sample.random_temporal_batches(
-                        num_minibatches, minibatch_size,
+                for minibatch, frames in sample.random_temporal_batches(
+                        num_minibatches,
+                        minibatch_size,
                         self.past + self.future):
-                    yield minibatch, sample.date
+                    yield minibatch, sample.date, frames
             num_batches -= 1
             if num_batches <= 0:
                 return
@@ -280,11 +282,10 @@ class TemporalDate(torch_nn.Module):
         for batch in loader:
             for sample in batch:
                 num_frames = sample.data.shape[0]
-                for minibatch in sample.selected_temporal_batches(
+                for minibatch, frames in sample.selected_temporal_batches(
                         minibatch_size, self.past + self.future,
-                        range(self.past + self.future,
-                              num_frames - self.past - self.future)):
-                    yield minibatch, sample.date
+                        range(self.past + self.future, num_frames - self.past - self.future)):
+                    yield minibatch, sample.date, frames
 
 
 class TemporalRegression(torch_nn.Module):
@@ -320,19 +321,23 @@ class SeasonalTemporalRegression(torch_nn.Module):
             torch_nn.ReLU(),
             torch_nn.Conv2d(16, 1, **kwargs),
         )
+        self.bias_loc = torch_nn.Parameter(torch.zeros(1, 1, 495, 436))
         self.bias_day = torch_nn.Parameter(torch.zeros(7))
+        self.bias_hour = torch_nn.Parameter(torch.zeros(24, 1, 1, 1))
 
-    def forward(self, x_date):
-        x, date = x_date 
+    def forward(self, x_date_frames):
+        x, date, frames = x_date_frames
         x = self.temp_regr(x)
         d = date.weekday()
-        x = torch.sigmoid(x + self.bias_day[d])
+        h = [int(f / 12) for f in frames]
+        x = x + self.bias_loc + self.bias_day[d] + self.bias_hour[h]
+        x = torch.sigmoid(x)
         return x
 
 
 class SeasonalTemporalRegressionHeading(torch_nn.Module):
     def __init__(self, history: int):
-        super(SeasonalTemporalRegression, self).__init__()
+        super(SeasonalTemporalRegressionHeading, self).__init__()
         self.history = history
         kwargs = dict(kernel_size=1, stride=1, padding=0, bias=True)
         self.temp_regr = torch_nn.Sequential(
@@ -342,13 +347,19 @@ class SeasonalTemporalRegressionHeading(torch_nn.Module):
             torch_nn.ReLU(),
             torch_nn.Conv2d(16, 5, **kwargs),
         )
-        self.bias_day = torch_nn.Parameter(torch.zeros(7, 5))
-        self.v = torch.tensor(v)
+        self.bias_loc = torch_nn.Parameter(torch.zeros(1, 5, 495, 436))
+        self.bias_day = torch_nn.Parameter(torch.zeros(7, 5, 1, 1))
+        self.bias_hour = torch_nn.Parameter(torch.zeros(24, 5, 1, 1))
+        self.v = [0, 1, 85, 170, 255]
+        self.v = torch.tensor(self.v).float().to('cuda').view(1, 5, 1, 1)
+        self.v = self.v / 255
 
-    def forward(self, x_date):
-        x, date = x_date 
+    def forward(self, x_date_frames):
+        x, date, frames = x_date_frames
         x = self.temp_regr(x)
         d = date.weekday()
-        x = torch.softmax(x + self.bias_day[d])
+        h = [int(f / 12) for f in frames]
+        x = x + self.bias_loc + self.bias_day[d].view(1, 5, 1, 1) + self.bias_hour[h]
+        x = torch.softmax(x, dim=1)
         x = (x * self.v).sum(dim=1, keepdim=True)
         return x

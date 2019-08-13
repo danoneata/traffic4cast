@@ -129,9 +129,10 @@ class Traffic4CastSample(object):
                                       batch_size]
             else:
                 batch_frames = frames[batch * batch_size:]
-            yield torch.stack(
-                list(self.temporal_slices(slice_size, batch_frames,
-                                          valid=False)))
+            yield (
+                torch.stack(list(self.temporal_slices(slice_size, batch_frames, valid=False))),
+                batch_frames,
+            )
 
     def random_temporal_batches(self, num_batches: int, batch_size: int,
                                 slice_size: int) -> torch.tensor:
@@ -158,8 +159,10 @@ class Traffic4CastSample(object):
         for batch in range(num_batches):
             frames = random.sample(range(slice_size, num_frames - slice_size),
                                    batch_size)
-            yield torch.stack(
-                list(self.temporal_slices(slice_size, frames, valid=False)))
+            yield (
+                torch.stack(list(self.temporal_slices(slice_size, frames, valid=False))),
+                frames,
+            )
 
     def sliding_window_generator(self, width: int, stride: int,
                                  batch_size: int):

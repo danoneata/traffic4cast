@@ -26,11 +26,11 @@ from models import MODELS
 from evaluate import ROOT
 
 SEED = 1337
-MAX_EPOCHS = 16
-PATIENCE = 8
+MAX_EPOCHS = 128
+PATIENCE = 4
 LR_REDUCE_PARAMS = {
     "factor": 0.2,
-    "patience": 4,
+    "patience": 2,
 }
 
 
@@ -205,7 +205,7 @@ def main():
         "output/models/checkpoints",
         model_name,
         score_function=score_function,
-        n_saved=5,
+        n_saved=1,
         require_empty=False,
         create_dir=True)
     evaluator.add_event_handler(engine.Events.EPOCH_COMPLETED,
@@ -227,8 +227,8 @@ def main():
                       event_name=engine.Events.EPOCH_COMPLETED)
 
     trainer.run(ignite_train, max_epochs=MAX_EPOCHS)
-    torch.save(model.state_dict(), model_path)
-    print("Model saved at:", model_path)
+    # torch.save(model.state_dict(), model_path)
+    # print("Model saved at:", model_path)
 
 
 if __name__ == "__main__":
