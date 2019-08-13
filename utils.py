@@ -16,7 +16,7 @@ def cache(func, path, to_overwrite, *args, **kwargs):
         return result
     else:
         result = func(*args, **kwargs)
-        results = result.astype(np.uint8)
+        result = result.astype(np.uint8)
         submission_write.write_data(result, path)
         return result
 
