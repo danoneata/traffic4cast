@@ -16,5 +16,5 @@ for city in Berlin Istanbul Moscow; do
 done
 
 cd output/submissions
-zip -r0 ${name}.zip .
+zip -r0 ${name}.zip Berlin Istanbul Moscow
 rm -rf Berlin Istanbul Moscow
