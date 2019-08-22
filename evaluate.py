@@ -32,7 +32,12 @@ SUBMISSION_FRAMES = {
         CITIES)
 }
 
-SUBMISSION_SHAPE = (5 * N_FRAMES, 495, 436, 3)
+EVALUATION_SHAPE = (5 * N_FRAMES, 495, 436, 3)
+SUBMISSION_SHAPE = (5, N_FRAMES, 495, 436, 3)
+
+
+def get_prediction_folder(split, model_name, city):
+    return os.path.join("output", "predictions", split, model_name, city)
 
 
 def main():
@@ -121,17 +126,21 @@ def main():
         collate_fn=src.dataset.Traffic4CastDataset.collate_list)
 
     def predict(sample, channel_transforms):
-        predictions = np.zeros(SUBMISSION_SHAPE)
+        predictions = np.zeros(EVALUATION_SHAPE)
         for transform in channel_transforms:
             s = copy.deepcopy(sample)
             transform(s)
             for f, p in model.predict(SUBMISSION_FRAMES[args.city], s).items():
                 for c_i, c in enumerate(transform.channels):
-                    predictions[SUBMISSION_FRAMES[args.city].
-                                index(f), :, :, src.dataset.Traffic4CastSample.
-                                channel_to_index[c]] = p[c_i]
+                    predictions[
+                        SUBMISSION_FRAMES[args.city].index(f),
+                        :,
+                        :,
+                        src.dataset.Traffic4CastSample.channel_to_index[c]
+                    ] = p[c_i]
 
         predictions = predictions * 255.0
+        predictions = predictions.reshape(SUBMISSION_SHAPE)
         return predictions
 
     # Cache predictions to a specified path
@@ -139,8 +148,12 @@ def main():
     cached_predict = lambda path, *args: cache(predict, path, to_overwrite,
                                                *args)
 
-    dirname = os.path.join("output", "predictions", args.split, args.model,
-                           args.city)
+    if args.model_path:
+        model_name, _ = os.path.splitext(os.path.basename(args.model_path))
+    else:
+        model_name = args.model
+
+    dirname = get_prediction_folder(args.split, model_name, args.city)
     os.makedirs(dirname, exist_ok=True)
 
     to_str = lambda v: f"{v:7.5f}"
@@ -148,13 +161,20 @@ def main():
     errors = []
     for sample in loader:
         sample = sample[0]
-        predictions = cached_predict(sample.predicted_path(dirname), sample,
-                                     selected_channels_transforms) / 255.0
+        predictions = cached_predict(
+            sample.predicted_path(dirname),
+            sample,
+            selected_channels_transforms,
+        )
         if args.split == "validation":
+            # Prepare predictions
+            predictions = predictions / 255.0
+            predictions = predictions.reshape(*EVALUATION_SHAPE)
+            # Prepare groundtruth
             sample.permute('THWC')
-            gt = sample.data.index_select(
-                0, torch.tensor(SUBMISSION_FRAMES[args.city],
-                                dtype=torch.long)).numpy()
+            i = torch.tensor(SUBMISSION_FRAMES[args.city], dtype=torch.long)
+            gt = sample.data.index_select(0, i).numpy()
+            # Compute error
             mse = np.mean((gt - predictions)**2, axis=(0, 1, 2))
             errors.append(mse)
             if args.verbose:
