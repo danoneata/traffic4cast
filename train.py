@@ -22,6 +22,7 @@ import ignite.contrib.handlers.tensorboard_logger as tensorboard_logger
 import src.dataset
 
 from models import MODELS
+from models.nn import ignite_selected
 
 from evaluate import ROOT
 
@@ -148,8 +149,7 @@ def main():
         collate_fn=src.dataset.Traffic4CastDataset.collate_list,
         shuffle=False)
 
-    ignite_train = model.ignite_random(train_loader, args.num_minibatches,
-                                       args.minibatch_size, args.epoch_fraction)
+    ignite_train = ignite_selected(train_loader, epoch_fraction=args.epoch_fraction)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.04)
     loss = nn.MSELoss()
@@ -175,14 +175,11 @@ def main():
 
     @trainer.on(engine.Events.EPOCH_COMPLETED)
     def log_validation_loss(trainer):
-        evaluator.run(model.ignite_all(valid_loader, args.minibatch_size))
+        evaluator.run(ignite_selected(valid_loader))
         metrics = evaluator.state.metrics
         print("Epoch {:3d} Valid loss: {:8.6f} ←".format(
             trainer.state.epoch, metrics['loss']))
-        trainer.state.dataloader = model.ignite_random(train_loader,
-                                                       args.num_minibatches,
-                                                       args.minibatch_size,
-                                                       args.epoch_fraction)
+        trainer.state.dataloader = ignite_selected(train_loader, epoch_fraction=args.epoch_fraction)
 
     lr_reduce = lr_scheduler.ReduceLROnPlateau(optimizer,
                                                verbose=args.verbose,
