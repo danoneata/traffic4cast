@@ -295,6 +295,8 @@ class Traffic4CastDataset(torch.utils.data.Dataset):
         return self.size
 
     def __getitem__(self, idx: int):
+        if idx >= len(self):
+            raise IndexError
         for city, files in self.files.items():
             if idx >= len(files):
                 idx = idx - len(files)
