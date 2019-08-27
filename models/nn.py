@@ -314,25 +314,35 @@ class SeasonalTemporalRegression(torch_nn.Module):
         super(SeasonalTemporalRegression, self).__init__()
         self.history = history
         kwargs = dict(kernel_size=1, stride=1, padding=0, bias=True)
+        kwargs3 = dict(kernel_size=3, stride=1, padding=1, bias=True)
         self.temp_regr = torch_nn.Sequential(
             torch_nn.Conv2d(history, 16, **kwargs),
             torch_nn.ReLU(),
             torch_nn.Conv2d(16, 16, **kwargs),
             torch_nn.ReLU(),
-            torch_nn.Conv2d(16, 1, **kwargs),
+            torch_nn.Conv2d(16, 1, **kwargs)
         )
-        self.bias_loc = torch_nn.Parameter(torch.zeros(1, 1, 495, 436))
+        self.nn2 = torch_nn.Sequential(
+            torch_nn.Conv2d(history, 16, **kwargs3),
+            torch_nn.BatchNorm2d(16),
+            torch_nn.ReLU(),
+            torch_nn.Conv2d(16, 16, **kwargs3),
+            torch_nn.BatchNorm2d(16),
+            torch_nn.ReLU(),
+            torch_nn.Conv2d(16, 1, **kwargs3)
+        )
+        self.bias_loc = torch_nn.Parameter(torch.zeros(24, 1, 495, 436))
         self.bias_day = torch_nn.Parameter(torch.zeros(7))
-        self.bias_hour = torch_nn.Parameter(torch.zeros(24, 1, 1, 1))
+        # self.bias_hour = torch_nn.Parameter(torch.zeros(24, 1, 1, 1))
 
     def forward(self, x_date_frames):
         x, date, frames = x_date_frames
-        x = self.temp_regr(x)
+        t = self.temp_regr(x)
         d = date.weekday()
         h = [int(f / 12) for f in frames]
-        x = x + self.bias_loc + self.bias_day[d] + self.bias_hour[h]
-        x = torch.sigmoid(x)
-        return x
+        z = torch.tanh(t) + self.bias_loc[h] + self.bias_day[d]
+        m = torch.sigmoid(self.nn2(x))
+        return z * m, m
 
 
 class SeasonalTemporalRegressionHeading(torch_nn.Module):

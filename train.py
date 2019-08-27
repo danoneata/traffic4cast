@@ -152,19 +152,30 @@ def main():
                                        args.minibatch_size, args.epoch_fraction)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.04)
-    loss = nn.MSELoss()
+
+    mse = nn.MSELoss()
+    bce = nn.BCELoss()
+
+    def tr_loss(inp, tgt):
+        y, m = inp
+        idxs = (tgt > 0).float()
+        return mse(y, tgt) + 0.1 * bce(m, idxs)
+
+    def te_loss(inp, tgt):
+        y, m = inp
+        return mse(y, tgt)
 
     device = args.device
     if device.find('cuda') != -1 and not torch.cuda.is_available():
         device = 'cpu'
     trainer = engine.create_supervised_trainer(model,
                                                optimizer,
-                                               loss,
+                                               tr_loss,
                                                device=device,
                                                prepare_batch=model.ignite_batch)
     evaluator = engine.create_supervised_evaluator(
         model,
-        metrics={'loss': ignite.metrics.Loss(loss)},
+        metrics={'loss': ignite.metrics.Loss(te_loss)},
         device=device,
         prepare_batch=model.ignite_batch)
 
@@ -217,7 +228,7 @@ def main():
         logger.attach(trainer,
                       log_handler=tensorboard_logger.OutputHandler(
                           tag="training",
-                          output_transform=lambda loss: {'loss': loss}),
+                          output_transform=lambda loss: {'loss': tr_loss}),
                       event_name=engine.Events.ITERATION_COMPLETED)
         logger.attach(evaluator,
                       log_handler=tensorboard_logger.OutputHandler(
