@@ -7,6 +7,7 @@ import pdb
 import numpy as np
 import torch
 import torch.nn as torch_nn
+import torch.nn.functional as F
 
 import src.dataset
 
@@ -309,40 +310,102 @@ class TemporalRegression(torch_nn.Module):
         return x
 
 
+def double_conv(in_channels, out_channels):
+    return torch_nn.Sequential(
+        torch_nn.Conv2d(in_channels, out_channels, 3, padding=1),
+        torch_nn.ReLU(inplace=True),
+        torch_nn.Conv2d(out_channels, out_channels, 3, padding=1),
+        torch_nn.ReLU(inplace=True)
+    )
+
+
+class UNet(torch_nn.Module):
+
+    def __init__(self, in_channels, out_channels, use_biases):
+        super().__init__()
+        C = 4
+
+        self.dconv_down1 = double_conv(in_channels, 1 * C)
+        self.dconv_down2 = double_conv(1 * C, 2 * C)
+        self.dconv_down3 = double_conv(2 * C, 4 * C)
+        self.dconv_down4 = double_conv(4 * C, 8 * C)
+
+        self.maxpool = torch_nn.MaxPool2d(2)
+        self.upsample = torch_nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+
+        self.dconv_up3 = double_conv(8 * C + 4 * C, 4 * C)
+        self.dconv_up2 = double_conv(4 * C + 2 * C, 2 * C)
+        self.dconv_up1 = double_conv(2 * C + 1 * C, 1 * C)
+
+        self.conv_last = torch_nn.Conv2d(C, out_channels, kernel_size=1)
+        self.use_biases = use_biases
+
+        if self.use_biases:
+            self.bias_loc = torch_nn.Parameter(torch.zeros(24, 1, 512, 512))
+            self.bias_day = torch_nn.Parameter(torch.zeros(7))
+
+    def forward(self, x, day=None, hours=None):
+        conv1 = self.dconv_down1(x)
+        x = self.maxpool(conv1)
+
+        conv2 = self.dconv_down2(x)
+        x = self.maxpool(conv2)
+
+        conv3 = self.dconv_down3(x)
+        x = self.maxpool(conv3)
+
+        x = self.dconv_down4(x)
+
+        x = self.upsample(x)
+        x = torch.cat([x, conv3], dim=1)
+
+        x = self.dconv_up3(x)
+        x = self.upsample(x)
+        x = torch.cat([x, conv2], dim=1)
+
+        x = self.dconv_up2(x)
+        x = self.upsample(x)
+        x = torch.cat([x, conv1], dim=1)
+
+        x = self.dconv_up1(x)
+
+        if self.use_biases:
+            x = x + self.bias_loc[hours] + self.bias_day[day]
+
+        out = self.conv_last(x)
+
+        return out
+
+
 class SeasonalTemporalRegression(torch_nn.Module):
-    def __init__(self, history: int):
+    def __init__(self, history: int, future: int):
         super(SeasonalTemporalRegression, self).__init__()
         self.history = history
         kwargs = dict(kernel_size=1, stride=1, padding=0, bias=True)
-        kwargs3 = dict(kernel_size=3, stride=1, padding=1, bias=True)
         self.temp_regr = torch_nn.Sequential(
             torch_nn.Conv2d(history, 16, **kwargs),
             torch_nn.ReLU(),
             torch_nn.Conv2d(16, 16, **kwargs),
             torch_nn.ReLU(),
-            torch_nn.Conv2d(16, 1, **kwargs)
+            torch_nn.Conv2d(16, future, **kwargs)
         )
-        self.nn2 = torch_nn.Sequential(
-            torch_nn.Conv2d(history, 16, **kwargs3),
-            torch_nn.BatchNorm2d(16),
-            torch_nn.ReLU(),
-            torch_nn.Conv2d(16, 16, **kwargs3),
-            torch_nn.BatchNorm2d(16),
-            torch_nn.ReLU(),
-            torch_nn.Conv2d(16, 1, **kwargs3)
-        )
+        self.unet = UNet(history, future, use_biases=True)
         self.bias_loc = torch_nn.Parameter(torch.zeros(24, 1, 495, 436))
         self.bias_day = torch_nn.Parameter(torch.zeros(7))
-        # self.bias_hour = torch_nn.Parameter(torch.zeros(24, 1, 1, 1))
 
     def forward(self, x_date_frames):
         x, date, frames = x_date_frames
+        B, T, H, W = x.shape
+        weekday = date.weekday()
+        hours = [int(f / 12) for f in frames]
         t = self.temp_regr(x)
-        d = date.weekday()
-        h = [int(f / 12) for f in frames]
-        z = torch.tanh(t) + self.bias_loc[h] + self.bias_day[d]
-        m = torch.sigmoid(self.nn2(x))
-        return z * m, m
+        y = torch.tanh(t) + self.bias_loc[hours] + self.bias_day[weekday]
+        x_padded = F.pad(x, (0, 512 - W, 0, 512 - H), "constant", 0)
+        m_padded = self.unet(x_padded, day=weekday, hours=hours)
+        mask = m_padded[:, :, :H, :W]
+        mask = torch.sigmoid(mask)
+        out = mask * y
+        return out#, mask, y
 
 
 class SeasonalTemporalRegressionHeading(torch_nn.Module):
