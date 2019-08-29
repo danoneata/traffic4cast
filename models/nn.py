@@ -12,6 +12,17 @@ import torch.nn.functional as F
 import src.dataset
 
 
+def plot_pred(data):
+    """Small utility to generate plots of predictions for visual inspection."""
+    from matplotlib import pyplot as plt
+    fig, axes = plt.subplots(len(data), 3)
+    for r, datum in enumerate(data):
+        datum = datum.detach().cpu().numpy().squeeze()
+        for c in range(3):
+            axes[r, c].imshow(datum[c])
+    plt.show()
+
+
 class ReplacementMode(enum.Enum):
     """ Enumeration of frame replacement modes for prediction.
 
@@ -405,11 +416,11 @@ class SeasonalTemporalRegression(torch_nn.Module):
         mask = m_padded[:, :, :H, :W]
         mask = torch.sigmoid(mask)
         out = mask * y
-        return out#, mask, y
+        return out, mask, y
 
 
 class SeasonalTemporalRegressionHeading(torch_nn.Module):
-    def __init__(self, history: int):
+    def __init__(self, history: int, future: int):
         super(SeasonalTemporalRegressionHeading, self).__init__()
         self.history = history
         kwargs = dict(kernel_size=1, stride=1, padding=0, bias=True)
@@ -418,21 +429,24 @@ class SeasonalTemporalRegressionHeading(torch_nn.Module):
             torch_nn.ReLU(),
             torch_nn.Conv2d(16, 16, **kwargs),
             torch_nn.ReLU(),
-            torch_nn.Conv2d(16, 5, **kwargs),
+            torch_nn.Conv2d(16, future * 5, **kwargs),
         )
-        self.bias_loc = torch_nn.Parameter(torch.zeros(1, 5, 495, 436))
-        self.bias_day = torch_nn.Parameter(torch.zeros(7, 5, 1, 1))
-        self.bias_hour = torch_nn.Parameter(torch.zeros(24, 5, 1, 1))
-        self.v = [0, 1, 85, 170, 255]
-        self.v = torch.tensor(self.v).float().to('cuda').view(1, 5, 1, 1)
-        self.v = self.v / 255
+        self.future = future
+        self.directions = [0, 1, 85, 170, 255]
+        self.n_directions = len(self.directions)
+        self.directions = torch.tensor(self.directions).float().to('cuda').view(1, 5, 1, 1)
+        self.directions = self.directions / 255
+        self.bias_loc = torch_nn.Parameter(torch.zeros(24, 1, self.n_directions, 495, 436))
+        self.bias_day = torch_nn.Parameter(torch.zeros(7, 1, self.n_directions, 1, 1))
 
     def forward(self, x_date_frames):
         x, date, frames = x_date_frames
-        x = self.temp_regr(x)
-        d = date.weekday()
-        h = [int(f / 12) for f in frames]
-        x = x + self.bias_loc + self.bias_day[d].view(1, 5, 1, 1) + self.bias_hour[h]
-        x = torch.softmax(x, dim=1)
-        x = (x * self.v).sum(dim=1, keepdim=True)
-        return x
+        B, _, H, W = x.shape
+        t = self.temp_regr(x)
+        t = t.view(B, self.future, self.n_directions, H, W)
+        weekday = date.weekday()
+        hours = [int(f / 12) for f in frames]
+        y = t + self.bias_loc[hours] + self.bias_day[weekday].view(1, 1, self.n_directions, 1, 1)
+        y = torch.softmax(y, dim=2)
+        out = (y * self.directions).sum(dim=2)
+        return out
