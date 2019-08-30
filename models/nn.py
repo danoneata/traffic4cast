@@ -495,8 +495,8 @@ class MaskPredictor(torch_nn.Module):
         E = 4
         self.embed = torch_nn.Embedding(num_embeddings=5, embedding_dim=E)
         self.unet = UNet(E, 8, use_biases=False)
-        self.dconv1 = double_conv(1, 8)
-        self.dconv2 = double_conv(1, 8)
+        self.tconv1 = get_temporal_regressor(12, 8)
+        self.tconv2 = get_temporal_regressor(12, 8)
         self.tconv3 = get_temporal_regressor(8, 8)
         self.tconv4 = get_temporal_regressor(8, 3)
 
@@ -512,12 +512,12 @@ class MaskPredictor(torch_nn.Module):
         h = unpad(h)
 
         # Speed
-        s = x[:, -1:, 1]
-        s = self.dconv1(s)
+        s = x[:, :, 1]
+        s = self.tconv1(s)
 
         # Volume
-        v = x[:, -1:, 0]
-        v = self.dconv2(v)
+        v = x[:, :, 0]
+        v = self.tconv2(v)
 
         out = self.tconv3(h * s) + v
         out = self.tconv4(out)

@@ -151,7 +151,7 @@ def main():
     ignite_train = model.ignite_random(train_loader, args.num_minibatches,
                                        args.minibatch_size, args.epoch_fraction)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.04)
 
     mse = nn.MSELoss()
     bce = nn.BCELoss()
@@ -181,9 +181,9 @@ def main():
         ]
         print(*losses)
         return (
-            1.000 * loss1 +
-            0.015 * loss2 +
-            0.100 * loss3
+            1.0 * loss1 +
+            0.1 * loss2 +
+            0.1 * loss3
         )
     def te_loss(inp, tgt):
         out, *_ = inp
