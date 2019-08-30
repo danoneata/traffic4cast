@@ -484,7 +484,7 @@ def map_heading_to_consecutive(d):
     o = torch.zeros(d.shape, dtype=torch.uint8)
     o = o.to(d.device)
     for i, v in enumerate(HEADING_VALUES):
-        o[d == v] = i
+        o[d == v / 255] = i
     return o
 
 
