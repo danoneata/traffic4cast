@@ -12,6 +12,11 @@ import torch.nn.functional as F
 import src.dataset
 
 
+# TODO Move to constants file
+CHANNELS = ["volume", "speed", "heading"]
+HEADING_VALUES = [0, 1, 85, 170, 255]
+
+
 def plot_pred(data):
     """Small utility to generate plots of predictions for visual inspection."""
     from matplotlib import pyplot as plt
@@ -432,7 +437,7 @@ class SeasonalTemporalRegressionHeading(torch_nn.Module):
             torch_nn.Conv2d(16, future * 5, **kwargs),
         )
         self.future = future
-        self.directions = [0, 1, 85, 170, 255]
+        self.directions = HEADING_VALUES
         self.n_directions = len(self.directions)
         self.directions = torch.tensor(self.directions).float().to('cuda').view(1, 5, 1, 1)
         self.directions = self.directions / 255
@@ -450,3 +455,100 @@ class SeasonalTemporalRegressionHeading(torch_nn.Module):
         y = torch.softmax(y, dim=2)
         out = (y * self.directions).sum(dim=2)
         return out
+
+
+def get_temporal_regressor(history, future):
+    kwargs = dict(kernel_size=1, stride=1, padding=0, bias=True)
+    return torch_nn.Sequential(
+        torch_nn.Conv2d(history, 16, **kwargs),
+        torch_nn.ReLU(),
+        torch_nn.Conv2d(16, 16, **kwargs),
+        torch_nn.ReLU(),
+        torch_nn.Conv2d(16, future, **kwargs)
+    )
+
+
+H = 495
+W = 436
+
+
+def pad(x):
+    return F.pad(x, (0, 512 - W, 0, 512 - H), "constant", 0)
+
+
+def unpad(x):
+    return x[:, :, :H, :W]
+
+
+def map_heading_to_consecutive(d):
+    o = torch.zeros(d.shape, dtype=torch.uint8)
+    o = o.to(d.device)
+    for i, v in enumerate(HEADING_VALUES):
+        o[d == v] = i
+    return o
+
+
+class MaskPredictor(torch_nn.Module):
+    def __init__(self, future):
+        super(MaskPredictor, self).__init__()
+        N_CHANNELS = 3
+        E = 4
+        self.embed = torch_nn.Embedding(num_embeddings=5, embedding_dim=E)
+        self.unet = UNet(E, 8, use_biases=False)
+        self.dconv1 = double_conv(1, 8)
+        self.dconv2 = double_conv(1, 8)
+        self.tconv3 = get_temporal_regressor(8, 8)
+        self.tconv4 = get_temporal_regressor(8, 3)
+
+    def forward(self, x):
+        # x.shape → B, T, C, H, W
+        # Heading
+        h = x[:, -1, 2]
+        h = map_heading_to_consecutive(h)
+        h = self.embed(h.long())
+        h = h.permute(0, 3, 1, 2)
+        h = pad(h)
+        h = self.unet(h)
+        h = unpad(h)
+
+        # Speed
+        s = x[:, -1:, 1]
+        s = self.dconv1(s)
+
+        # Volume
+        v = x[:, -1:, 0]
+        v = self.dconv2(v)
+
+        out = self.tconv3(h * s) + v
+        out = self.tconv4(out)
+        out = torch.sigmoid(out)
+
+        return  out
+        # return unpad(torch.sigmoid(self.unet(pad(x[:, -1]))))
+
+
+class Lygia(torch_nn.Module):
+    def __init__(self, history: int, future: int):
+        super(Lygia, self).__init__()
+        self.history = history
+        self.future = future
+        self.n_channels = 3
+        self.mask_predictor = MaskPredictor(future)
+        self.temporal_regressors = torch_nn.ModuleList([
+            get_temporal_regressor(history, future)
+            for channel in CHANNELS
+        ])
+
+    def forward(self, data):
+        x, _, _ = data
+        B, _, H, W = x.shape
+        x = x.view(B, self.history, self.n_channels, H, W)
+        mask = self.mask_predictor(x)
+        mask = mask.unsqueeze(2)
+        y = [
+            torch.sigmoid(self.temporal_regressors[i](x[:, :, i])).unsqueeze(2)
+            for i in range(self.n_channels)
+        ]
+        y = torch.cat(y, dim=2)
+        out = mask * y
+        return out, mask, y

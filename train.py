@@ -151,43 +151,48 @@ def main():
     ignite_train = model.ignite_random(train_loader, args.num_minibatches,
                                        args.minibatch_size, args.epoch_fraction)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.04)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
     mse = nn.MSELoss()
     bce = nn.BCELoss()
 
-    # def tr_loss(inp, tgt):
-    #     out, mask, y = inp
-    #     nnzs = (tgt > 0)
-    #     idxs = nnzs.float()
-    #     loss1 = mse(out, tgt)
-    #     loss2 = bce(mask, idxs)
-    #     loss3 = mse(y[nnzs], tgt[nnzs])
-    #     # loss4 = mse(idxs * y, tgt)  # predict perfectly the missing values
-    #     # loss5 = mse(mask * tgt, tgt)  # predict perfectly the values
-    #     # loss6 = mse(idxs * tgt, tgt) # zero
-    #     losses = [
-    #         '{:.6f}'.format(loss.detach().cpu().numpy())
-    #         for loss in [
-    #             loss1,
-    #             loss2,
-    #             loss3,
-    #             # loss4,
-    #             # loss5,
-    #         ]
-    #     ]
-    #     print(*losses)
-    #     return (
-    #         1.000 * loss1 +
-    #         0.015 * loss2 +
-    #         0.100 * loss3
-    #     )
-    # def te_loss(inp, tgt):
-    #     y, *_ = inp
-    #     return mse(y, tgt)
+    def tr_loss(inp, tgt):
+        out, mask, y = inp
+        B, F, C, H, W = out.shape
+        tgt = tgt.view(B, F, C, H, W)
+        nnzs = (tgt[:, :, :1] > 0)
+        idxs = nnzs.float()
+        nnzs = nnzs.repeat(1, 1, 3, 1, 1)
+        loss1 = mse(out, tgt)
+        loss2 = bce(mask, idxs)
+        loss3 = mse(y[nnzs], tgt[nnzs])
+        # loss4 = mse(idxs * y, tgt)  # predict perfectly the missing values
+        # loss5 = mse(mask * tgt, tgt)  # predict perfectly the values
+        # loss6 = mse(idxs * tgt, tgt) # zero
+        losses = [
+            '{:.6f}'.format(loss.detach().cpu().numpy())
+            for loss in [
+                loss1,
+                loss2,
+                loss3,
+                # loss4,
+                # loss5,
+            ]
+        ]
+        print(*losses)
+        return (
+            1.000 * loss1 +
+            0.015 * loss2 +
+            0.100 * loss3
+        )
+    def te_loss(inp, tgt):
+        out, *_ = inp
+        B, F, C, H, W = out.shape
+        tgt = tgt.view(B, F, C, H, W)
+        return mse(out, tgt)
 
-    tr_loss = mse
-    te_loss = mse
+    # tr_loss = mse
+    # te_loss = mse
 
     device = args.device
     if device.find('cuda') != -1 and not torch.cuda.is_available():
@@ -203,10 +208,10 @@ def main():
         device=device,
         prepare_batch=model.ignite_batch)
 
-    @trainer.on(engine.Events.ITERATION_COMPLETED)
-    def log_training_loss(trainer):
-        print("Epoch {:3d} Train loss: {:8.6f}".format(trainer.state.epoch,
-                                                       trainer.state.output))
+    # @trainer.on(engine.Events.ITERATION_COMPLETED)
+    # def log_training_loss(trainer):
+    #     print("Epoch {:3d} Train loss: {:8.6f}".format(trainer.state.epoch,
+    #                                                    trainer.state.output))
 
     @trainer.on(engine.Events.EPOCH_COMPLETED)
     def log_validation_loss(trainer):
