@@ -492,36 +492,39 @@ class MaskPredictor(torch_nn.Module):
     def __init__(self, future):
         super(MaskPredictor, self).__init__()
         N_CHANNELS = 3
-        E = 4
+        E = 2
         self.embed = torch_nn.Embedding(num_embeddings=5, embedding_dim=E)
-        self.unet = UNet(E, 8, use_biases=False)
-        self.tconv1 = get_temporal_regressor(12, 8)
-        self.tconv2 = get_temporal_regressor(12, 8)
-        self.tconv3 = get_temporal_regressor(8, 8)
-        self.tconv4 = get_temporal_regressor(8, 3)
+        self.unet = UNet(3 * (E + 2), 3, use_biases=False)
+        # self.tconv1 = get_temporal_regressor(12, 8)
+        # self.tconv2 = get_temporal_regressor(12, 8)
+        # self.tconv3 = get_temporal_regressor(8, 8)
+        # self.tconv4 = get_temporal_regressor(8, 3)
 
     def forward(self, x):
         # x.shape → B, T, C, H, W
         # Heading
-        h = x[:, -1, 2]
+        B, _, _, H, W = x.shape
+        h = x[:, :, 2]
         h = map_heading_to_consecutive(h)
         h = self.embed(h.long())
-        h = h.permute(0, 3, 1, 2)
-        h = pad(h)
-        h = self.unet(h)
-        h = unpad(h)
+        h = h.permute(0, 1, 4, 2, 3)
+        x = torch.cat([x[:, :, :2], h], dim=2)
+        x = x[:, -3:].view(B, 3 * 4, H, W)
+        x = pad(x)
+        x = self.unet(x)
+        x = unpad(x)
 
         # Speed
-        s = x[:, :, 1]
-        s = self.tconv1(s)
+        # s = x[:, :, 1]
+        # s = self.tconv1(s)
 
-        # Volume
-        v = x[:, :, 0]
-        v = self.tconv2(v)
+        # # Volume
+        # v = x[:, :, 0]
+        # v = self.tconv2(v)
 
-        out = self.tconv3(h * s) + v
-        out = self.tconv4(out)
-        out = torch.sigmoid(out)
+        # out = self.tconv3(h * s) + v
+        # out = self.tconv4(out)
+        out = torch.sigmoid(x)
 
         return  out
         # return unpad(torch.sigmoid(self.unet(pad(x[:, -1]))))
