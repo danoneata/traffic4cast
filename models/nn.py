@@ -9,6 +9,8 @@ import torch
 import torch.nn as torch_nn
 import torch.nn.functional as F
 
+from matplotlib import pyplot as plt
+
 import src.dataset
 
 
@@ -19,7 +21,6 @@ HEADING_VALUES = [0, 1, 85, 170, 255]
 
 def plot_pred(data):
     """Small utility to generate plots of predictions for visual inspection."""
-    from matplotlib import pyplot as plt
     fig, axes = plt.subplots(len(data), 3)
     for r, datum in enumerate(data):
         datum = datum.detach().cpu().numpy().squeeze()
@@ -337,7 +338,7 @@ def double_conv(in_channels, out_channels):
 
 class UNet(torch_nn.Module):
 
-    def __init__(self, in_channels, out_channels, use_biases):
+    def __init__(self, in_channels, out_channels, type_biases=None):
         super().__init__()
         C = 4
 
@@ -353,10 +354,14 @@ class UNet(torch_nn.Module):
         self.dconv_up2 = double_conv(4 * C + 2 * C, 2 * C)
         self.dconv_up1 = double_conv(2 * C + 1 * C, 1 * C)
 
+        self.bn = torch_nn.BatchNorm2d(C)
         self.conv_last = torch_nn.Conv2d(C, out_channels, kernel_size=1)
-        self.use_biases = use_biases
+        self.type_biases = type_biases
 
-        if self.use_biases:
+        if self.type_biases == "L":
+            self.bias_loc = torch_nn.Parameter(torch.zeros(1, 1, 512, 512))
+
+        if self.type_biases == "LxH+W":
             self.bias_loc = torch_nn.Parameter(torch.zeros(24, 1, 512, 512))
             self.bias_day = torch_nn.Parameter(torch.zeros(7))
 
@@ -385,12 +390,15 @@ class UNet(torch_nn.Module):
 
         x = self.dconv_up1(x)
 
-        if self.use_biases:
+        if self.type_biases == "L":
+            x = x + self.bias_loc
+
+        if self.type_biases == "LxH+W":
             x = x + self.bias_loc[hours] + self.bias_day[day]
 
-        out = self.conv_last(x)
+        x = self.bn(x)
 
-        return out
+        return self.conv_last(x)
 
 
 class SeasonalTemporalRegression(torch_nn.Module):
@@ -484,7 +492,7 @@ def map_heading_to_consecutive(d):
     o = torch.zeros(d.shape, dtype=torch.uint8)
     o = o.to(d.device)
     for i, v in enumerate(HEADING_VALUES):
-        o[d == v / 255] = i
+        o.masked_fill_(d == v / 255, i)
     return o
 
 
@@ -494,7 +502,9 @@ class MaskPredictor(torch_nn.Module):
         N_CHANNELS = 3
         E = 2
         self.embed = torch_nn.Embedding(num_embeddings=5, embedding_dim=E)
-        self.unet = UNet(3 * (E + 2), 3, use_biases=False)
+        self.unet = UNet(E, 2, type_biases="L")
+        self.local_nn = Local(inplanes, outplanes)
+        self.tr = get_temporal_regressor(2, 1)
         # self.tconv1 = get_temporal_regressor(12, 8)
         # self.tconv2 = get_temporal_regressor(12, 8)
         # self.tconv3 = get_temporal_regressor(8, 8)
@@ -502,32 +512,44 @@ class MaskPredictor(torch_nn.Module):
 
     def forward(self, x):
         # x.shape → B, T, C, H, W
-        # Heading
         B, _, _, H, W = x.shape
-        h = x[:, :, 2]
+        h = x[:, -1, 2]
         h = map_heading_to_consecutive(h)
         h = self.embed(h.long())
-        h = h.permute(0, 1, 4, 2, 3)
-        x = torch.cat([x[:, :, :2], h], dim=2)
-        x = x[:, -3:].view(B, 3 * 4, H, W)
-        x = pad(x)
-        x = self.unet(x)
-        x = unpad(x)
-
-        # Speed
-        # s = x[:, :, 1]
-        # s = self.tconv1(s)
-
-        # # Volume
-        # v = x[:, :, 0]
-        # v = self.tconv2(v)
-
-        # out = self.tconv3(h * s) + v
-        # out = self.tconv4(out)
-        out = torch.sigmoid(x)
-
-        return  out
-        # return unpad(torch.sigmoid(self.unet(pad(x[:, -1]))))
+        h = h.permute(0, 3, 1, 2)
+        # g = torch.cat([x[:, -1, 1:2], h], dim=1)
+        g = Lo
+        g = pad(g)
+        g = self.unet(g)
+        f = unpad(g)
+        f = f.permute(0, 2, 3, 1)
+        # f = 0.5 * torch.tanh(f)
+        # g = torch.tanh(g)
+        g = torch.meshgrid([
+            torch.arange(-1, 1, step=2 / W),
+            torch.arange(-1, 1, step=2 / H),
+        ])
+        g = torch.stack((g[0].t(), g[1].t()), dim=-1).cuda().repeat(B, 1, 1, 1)
+        # xx = torch.arange(0, W).view(1, -1).repeat(H, 1)
+        # yy = torch.arange(0, H).view(-1, 1).repeat(1, W)
+        # xx = xx.view(1, 1, H, W).repeat(B, 1, 1, 1)
+        # yy = yy.view(1, 1, H, W).repeat(B, 1, 1, 1)
+        # g = torch.cat((xx, yy), 1).float().cuda()
+        # g[:, 0, :, :] = 2.0 * g[:, 0, :, :].clone() / max(W - 1, 1) - 1.0
+        # g[:, 1, :, :] = 2.0 * g[:, 1, :, :].clone() / max(H - 1, 1) - 1.0
+        g = g + 0.5 * torch.sigmoid(f) - 0.25
+        # y = torch.sigmoid(self.tr(x[:, -1, :2]))
+        y = (x[:, -1, :1] > 0).float()
+        out = F.grid_sample(y, g)
+        # out = torch.sigmoid(out)
+        print(f.min().detach().cpu(), f.max().detach().cpu())
+        print(g.min().detach().cpu(), g.max().detach().cpu())
+        fig, axes = plt.subplots(nrows=2)
+        axes[0].imshow(y[-1].detach().cpu().numpy().squeeze())
+        axes[0].imshow(y[-1].detach().cpu().numpy().squeeze())
+        axes[1].imshow(out[-1].detach().cpu().numpy().squeeze())
+        plt.savefig('/tmp/ooo.png')
+        return out
 
 
 class Lygia(torch_nn.Module):
