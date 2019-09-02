@@ -496,15 +496,29 @@ def map_heading_to_consecutive(d):
     return o
 
 
+class Conv2dLocation(torch_nn.Module):
+    def __init__(self, inplanes, outplanes):
+        super(Conv2dLocation, self).__init__()
+        self.w = torch_nn.Parameter(torch.zeros(1, outplanes, inplanes, 495, 436))
+        self.b = torch_nn.Parameter(torch.zeros(1, outplanes,        1, 495, 436))
+
+    def forward(self, x):
+        # x.shape = B x      C x H x W
+        # w.shape = 1 x C' x C x H x W
+        o = (self.w * x.unsqueeze(1)).sum(dim=2, keepdim=True) + self.b
+        return o.squeeze(2)
+
+
 class MaskPredictor(torch_nn.Module):
     def __init__(self, future):
         super(MaskPredictor, self).__init__()
         N_CHANNELS = 3
         E = 2
         self.embed = torch_nn.Embedding(num_embeddings=5, embedding_dim=E)
-        self.unet = UNet(E, 2, type_biases="L")
-        self.local_nn = Local(inplanes, outplanes)
+        self.unet = UNet(E + 1, 2, type_biases="L")
+        self.loc_net = Conv2dLocation(3, 2)
         self.tr = get_temporal_regressor(2, 1)
+        self.b = torch_nn.Parameter(torch.zeros(1, 1, 495, 436))
         # self.tconv1 = get_temporal_regressor(12, 8)
         # self.tconv2 = get_temporal_regressor(12, 8)
         # self.tconv3 = get_temporal_regressor(8, 8)
@@ -517,38 +531,29 @@ class MaskPredictor(torch_nn.Module):
         h = map_heading_to_consecutive(h)
         h = self.embed(h.long())
         h = h.permute(0, 3, 1, 2)
-        # g = torch.cat([x[:, -1, 1:2], h], dim=1)
-        g = Lo
-        g = pad(g)
-        g = self.unet(g)
-        f = unpad(g)
+        f = torch.cat([x[:, -1, 1:2], h], dim=1)  # speed + heading
+        f = self.loc_net(f)
+        # g = pad(g)
+        # g = self.unet(g)
+        # f = unpad(g)
         f = f.permute(0, 2, 3, 1)
         # f = 0.5 * torch.tanh(f)
         # g = torch.tanh(g)
-        g = torch.meshgrid([
-            torch.arange(-1, 1, step=2 / W),
-            torch.arange(-1, 1, step=2 / H),
-        ])
+        g = torch.meshgrid([torch.arange(-1, 1, step=2 / W), torch.arange(-1, 1, step=2 / H)])
         g = torch.stack((g[0].t(), g[1].t()), dim=-1).cuda().repeat(B, 1, 1, 1)
-        # xx = torch.arange(0, W).view(1, -1).repeat(H, 1)
-        # yy = torch.arange(0, H).view(-1, 1).repeat(1, W)
-        # xx = xx.view(1, 1, H, W).repeat(B, 1, 1, 1)
-        # yy = yy.view(1, 1, H, W).repeat(B, 1, 1, 1)
-        # g = torch.cat((xx, yy), 1).float().cuda()
-        # g[:, 0, :, :] = 2.0 * g[:, 0, :, :].clone() / max(W - 1, 1) - 1.0
-        # g[:, 1, :, :] = 2.0 * g[:, 1, :, :].clone() / max(H - 1, 1) - 1.0
-        g = g + 0.5 * torch.sigmoid(f) - 0.25
-        # y = torch.sigmoid(self.tr(x[:, -1, :2]))
-        y = (x[:, -1, :1] > 0).float()
+        g = g + 0.1 * torch.tanh(f)
+        y = self.tr(x[:, -1, :2])
+        # y = (x[:, -1, :1] > 0).float()
         out = F.grid_sample(y, g)
-        # out = torch.sigmoid(out)
-        print(f.min().detach().cpu(), f.max().detach().cpu())
-        print(g.min().detach().cpu(), g.max().detach().cpu())
-        fig, axes = plt.subplots(nrows=2)
-        axes[0].imshow(y[-1].detach().cpu().numpy().squeeze())
-        axes[0].imshow(y[-1].detach().cpu().numpy().squeeze())
-        axes[1].imshow(out[-1].detach().cpu().numpy().squeeze())
-        plt.savefig('/tmp/ooo.png')
+        # print(f.min().detach().cpu(), f.max().detach().cpu())
+        # print(g.min().detach().cpu(), g.max().detach().cpu())
+        # print(self.b.min().detach().cpu(), self.b.max().detach().cpu())
+        # print(out.min().detach().cpu(), out.max().detach().cpu())
+        out = torch.sigmoid(out + self.b)
+        # fig, axes = plt.subplots(nrows=2)
+        # axes[0].imshow(y[-1].detach().cpu().numpy().squeeze())
+        # axes[1].imshow(out[-1].detach().cpu().numpy().squeeze())
+        # plt.savefig('/tmp/ooo.png')
         return out
 
 
@@ -563,17 +568,20 @@ class Lygia(torch_nn.Module):
             get_temporal_regressor(history, future)
             for channel in CHANNELS
         ])
+        self.b = torch_nn.Parameter(torch.zeros(1, 1, 3, 495, 436))
 
     def forward(self, data):
         x, _, _ = data
         B, _, H, W = x.shape
+        # B, T, C, H, W
         x = x.view(B, self.history, self.n_channels, H, W)
         mask = self.mask_predictor(x)
         mask = mask.unsqueeze(2)
         y = [
-            torch.sigmoid(self.temporal_regressors[i](x[:, :, i])).unsqueeze(2)
+            self.temporal_regressors[i](x[:, :, i]).unsqueeze(2)
             for i in range(self.n_channels)
         ]
         y = torch.cat(y, dim=2)
+        y = torch.sigmoid(y + self.b)
         out = mask * y
         return out, mask, y
