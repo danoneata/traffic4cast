@@ -476,6 +476,23 @@ def get_temporal_regressor(history, future):
     )
 
 
+class Bimap(torch_nn.Module):
+    """Parallel composition of PyTorch modules. Similar to
+    Haskell's `bimap` function:
+
+        bimap :: (a → a') × (b → b') → (a × a' → b × b')
+
+    """
+    def __init__(self, model1, model2):
+        super(Bimap, self).__init__()
+        self.model1 = model1
+        self.model2 = model2
+
+    def forward(self, xy):
+        x, y = xy
+        return self.model1(x), self.model2(y)
+
+
 H = 495
 W = 436
 
@@ -516,7 +533,13 @@ class MaskPredictor(torch_nn.Module):
         E = 2
         self.embed = torch_nn.Embedding(num_embeddings=5, embedding_dim=E)
         self.unet = UNet(E + 1, 2, type_biases="L")
-        self.loc_net = Conv2dLocation(3, 2)
+        self.loc_net = torch_nn.Sequential(
+            Conv2dLocation(3, 4),
+            torch_nn.ReLU(inplace=True),
+            torch_nn.Conv2d(4, 4, kernel_size=1, padding=0),
+            torch_nn.ReLU(inplace=True),
+            Conv2dLocation(4, 1),
+        )
         self.tr = get_temporal_regressor(2, 1)
         self.b = torch_nn.Parameter(torch.zeros(1, 1, 495, 436))
         # self.tconv1 = get_temporal_regressor(12, 8)
@@ -536,24 +559,24 @@ class MaskPredictor(torch_nn.Module):
         # g = pad(g)
         # g = self.unet(g)
         # f = unpad(g)
-        f = f.permute(0, 2, 3, 1)
+        # f = f.permute(0, 2, 3, 1)
         # f = 0.5 * torch.tanh(f)
         # g = torch.tanh(g)
-        g = torch.meshgrid([torch.arange(-1, 1, step=2 / W), torch.arange(-1, 1, step=2 / H)])
-        g = torch.stack((g[0].t(), g[1].t()), dim=-1).cuda().repeat(B, 1, 1, 1)
-        g = g + 0.1 * torch.tanh(f)
-        y = self.tr(x[:, -1, :2])
-        # y = (x[:, -1, :1] > 0).float()
-        out = F.grid_sample(y, g)
+        # g = torch.meshgrid([torch.arange(-1, 1, step=2 / W), torch.arange(-1, 1, step=2 / H)])
+        # g = torch.stack((g[0].t(), g[1].t()), dim=-1).cuda().repeat(B, 1, 1, 1)
+        # g = g + 0.1 * torch.tanh(f)
+        # y = self.tr(x[:, -1, :2])
+        # # y = (x[:, -1, :1] > 0).float()
+        # out = F.grid_sample(y, g)
         # print(f.min().detach().cpu(), f.max().detach().cpu())
         # print(g.min().detach().cpu(), g.max().detach().cpu())
         # print(self.b.min().detach().cpu(), self.b.max().detach().cpu())
         # print(out.min().detach().cpu(), out.max().detach().cpu())
-        out = torch.sigmoid(out + self.b)
-        # fig, axes = plt.subplots(nrows=2)
+        out = torch.sigmoid(f)
+        # fig, axes = plt.subplots(nrows=2, figsize=(20, 10))
         # axes[0].imshow(y[-1].detach().cpu().numpy().squeeze())
         # axes[1].imshow(out[-1].detach().cpu().numpy().squeeze())
-        # plt.savefig('/tmp/ooo.png')
+        # plt.savefig('/tmp/ooo.png', dpi=200)
         return out
 
 
@@ -585,3 +608,147 @@ class Lygia(torch_nn.Module):
         y = torch.sigmoid(y + self.b)
         out = mask * y
         return out, mask, y
+
+
+get_hours = lambda frames: [int(frame / 12) for frame in frames]
+
+
+class Biases(torch_nn.Module):
+    def __init__(self, biases_types=[], planes=1):
+        super(Biases, self).__init__()
+        self.biases_types = biases_types
+        if "HxL" in biases_types:
+            self.bias_HxL = torch_nn.Parameter(torch.zeros(24, planes, H, W))
+        if "HxW" in biases_types:
+            self.bias_HxW = torch_nn.Parameter(torch.zeros(24, 7, planes, 1, 1))
+        if "HxM" in biases_types:
+            self.bias_HxM = torch_nn.Parameter(torch.zeros(24, 12, planes, 1, 1))
+
+    def forward(self, data):
+        x, extra = data
+        date, frames = extra
+        if "HxL" in self.biases_types:
+            x = x + self.bias_HxL[get_hours(frames)]
+        if "HxW" in self.biases_types:
+            x = x + self.bias_HxW[get_hours(frames), date.weekday()]
+        if "HxM" in self.biases_types:
+            x = x + self.bias_HxM[get_hours(frames), date.month - 1]
+        return x
+
+
+class WeightedSum(torch_nn.Module):
+    def __init__(self, values):
+        super(WeightedSum, self).__init__()
+        self.dim = 1
+        self.values = values.view(1, len(values), 1, 1)
+
+    def forward(self, x):
+        if self.values.device != x.device:
+            self.values = self.values.to(x.device)
+        return (torch.softmax(x, dim=self.dim) * self.values).sum(dim=self.dim, keepdim=True)
+
+
+class MaskPredictor2(torch_nn.Module):
+    def __init__(self, future):
+        super(MaskPredictor2, self).__init__()
+        self.bias = torch_nn.Parameter(torch.zeros(24, 1, H, W))
+        self.displacement_predictor = torch_nn.Sequential(
+            torch_nn.Conv2d(2, 8, kernel_size=1, padding=0),
+            torch_nn.ReLU(inplace=True),
+            torch_nn.Conv2d(8, 8, kernel_size=1, padding=0),
+            torch_nn.ReLU(inplace=True),
+            Conv2dLocation(8, 2),
+        )
+        self.value_predictor = get_temporal_regressor(2, 1)
+        self.mesh = torch.meshgrid([torch.arange(-1, 1, step=2 / W), torch.arange(-1, 1, step=2 / H)])
+        self.mesh = torch.stack((self.mesh[0].t(), self.mesh[1].t()), dim=-1)
+
+    def forward(self, data):
+        x, extra = data
+        _, frames = extra
+        # x.shape → B, T, C, H, W
+        B, T, C, H, W = x.shape
+        # x = x.view(B, T * C, H, W)
+        # x = x[:, -1]
+
+        mesh = self.mesh.repeat(B, 1, 1, 1).to(x.device)
+        # Predict displacement based on speed and heading
+        delta_flow = self.displacement_predictor(x[:, -1, 1:])
+        delta_flow = delta_flow.permute(0, 2, 3, 1)
+        grid = mesh + 0.1 * torch.tanh(delta_flow)
+        values = self.value_predictor(x[:, -1, :2])
+        mask = F.grid_sample(values, grid)
+        mask = torch.sigmoid(mask + self.bias[get_hours(frames)])
+
+        # fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(30, 30))
+        # axes[0, 0].imshow((x[-1, -1, 0] > 0).detach().cpu().numpy().squeeze())
+        # axes[0, 1].imshow(x[-1, -1, 2].detach().cpu().numpy().squeeze())
+        # axes[1, 0].imshow(mask[0, -1].detach().cpu().numpy().squeeze())
+        # plt.savefig('/tmp/ooo.png', dpi=200)
+        # pdb.set_trace()
+
+        return mask
+
+
+def print_stats(label, t):
+    v = t.detach().cpu().numpy()
+    print(label, v.min(), v.mean(), v.max())
+
+
+class Pomponia(torch_nn.Module):
+    FUTURE = 1
+    BIASES = "HxL HxW HxM".split()
+    CHANNELS = "VSH"
+    N_CHANNELS = len(CHANNELS)
+
+    def __init__(self, history: int, future: int):
+        super(Pomponia, self).__init__()
+        directions = torch.tensor([v / 255 for v in HEADING_VALUES])
+        self.history = history
+        self.mask_predictor = MaskPredictor2(future)
+        self.channel_predictors = torch_nn.ModuleDict({
+            "V": torch_nn.Sequential(
+                Bimap(
+                    get_temporal_regressor(self.history, self.FUTURE),
+                    torch_nn.Identity(),
+                ),
+                Biases(self.BIASES),
+                torch_nn.Sigmoid(),
+            ),
+            "S": torch_nn.Sequential(
+                Bimap(
+                    get_temporal_regressor(self.history, self.FUTURE),
+                    torch_nn.Identity(),
+                ),
+                Biases(self.BIASES),
+                torch_nn.Sigmoid(),
+            ),
+            "H": torch_nn.Sequential(
+                Bimap(
+                    get_temporal_regressor(self.history, self.FUTURE * len(HEADING_VALUES)),
+                    torch_nn.Identity(),
+                ),
+                Biases(self.BIASES, planes=5),
+                WeightedSum(directions),
+            ),
+        })
+
+    def forward(self, data):
+        x, *extra = data
+        # x.shape = B, T, C, H, W
+        B, _, H, W = x.shape
+        x = x.view(B, self.history, self.N_CHANNELS, H, W)
+        mask = self.mask_predictor((x, extra))
+        values = (
+            self.channel_predictors[c]((self._get_channel(x, c), extra)).unsqueeze(0)
+            for c in self.CHANNELS
+        )
+        values = torch.cat(list(values), dim=2)
+        # out.shape = B, T', C, H, W
+        out = mask * values
+        return out, mask, values
+
+    def _get_channel(self, x, channel):
+        # x.shape = B, T, C, H, W
+        i = self.CHANNELS.index(channel)
+        return x[:, :, i]

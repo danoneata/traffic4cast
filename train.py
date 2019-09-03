@@ -164,7 +164,7 @@ def main():
         idxs = nnzs.float()
         nnzs = nnzs.repeat(1, 1, 3, 1, 1)
         loss1 = mse(out, tgt)
-        loss2 = bce(mask, idxs[:, :1])
+        loss2 = bce(mask, idxs)
         loss3 = mse(y[nnzs], tgt[nnzs])
         # loss4 = mse(idxs * y, tgt)  # predict perfectly the missing values
         # loss5 = mse(mask * tgt, tgt)  # predict perfectly the values

@@ -8,4 +8,5 @@ MODELS = {
     "seasonal-temporal-regression": lambda: models.nn.TemporalDate(12, 3, 1, models.nn.SeasonalTemporalRegression(12, 3)),
     "seasonal-temporal-regression-heading": lambda: models.nn.TemporalDate(12, 3, 1, models.nn.SeasonalTemporalRegressionHeading(12, 3)),
     "lygia": lambda: models.nn.TemporalDate(12, 1, 3, models.nn.Lygia(12, 1)),
+    "pomponia": lambda: models.nn.TemporalDate(12, 1, 3, models.nn.Pomponia(12, 1)),
 }
