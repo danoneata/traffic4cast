@@ -164,7 +164,7 @@ def main():
 
         weights_losses = [(1.0, mse(out, tgt))]
 
-        if hasattr(model, "use_mask") and model.use_mask:
+        if hasattr(model.module, "use_mask") and model.module.use_mask:
             nnzs = (tgt[:, :, :1] > 0)
             idxs = nnzs.float()
             nnzs = nnzs.repeat(1, 1, 3, 1, 1)
