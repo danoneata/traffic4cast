@@ -156,7 +156,7 @@ def main():
     dirname = get_prediction_folder(args.split, model_name, args.city)
     os.makedirs(dirname, exist_ok=True)
 
-    to_str = lambda v: f"{v:7.5f}"
+    to_str = lambda v: f"{v:.7f}"
 
     errors = []
     for sample in loader:
