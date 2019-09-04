@@ -623,6 +623,12 @@ class Biases(torch_nn.Module):
     def __init__(self, biases_types=[], planes=1):
         super(Biases, self).__init__()
         self.biases_types = biases_types
+        if "H" in biases_types:
+            self.bias_H = torch_nn.Parameter(torch.zeros(24, planes, 1, 1))
+        if "W" in biases_types:
+            self.bias_W = torch_nn.Parameter(torch.zeros(7, planes, 1, 1))
+        if "L" in biases_types:
+            self.bias_L = torch_nn.Parameter(torch.zeros(1, planes, H, W))
         if "HxL" in biases_types:
             self.bias_HxL = torch_nn.Parameter(torch.zeros(24, planes, H, W))
         if "HxW" in biases_types:
@@ -633,6 +639,12 @@ class Biases(torch_nn.Module):
     def forward(self, data):
         x, extra = data
         date, frames = extra
+        if "H" in self.biases_types:
+            x = x + self.bias_H[get_hours(frames)]
+        if "W" in self.biases_types:
+            x = x + self.bias_W[date.weekday()]
+        if "L" in self.biases_types:
+            x = x + self.bias_L
         if "HxL" in self.biases_types:
             x = x + self.bias_HxL[get_hours(frames)]
         if "HxW" in self.biases_types:
@@ -703,11 +715,10 @@ def print_stats(label, t):
 
 class Pomponia(torch_nn.Module):
     FUTURE = 1
-    BIASES = "HxL HxW HxM".split()
     CHANNELS = "VSH"
     N_CHANNELS = len(CHANNELS)
 
-    def __init__(self, history: int, future: int, use_mask=True):
+    def __init__(self, history: int, future: int, use_mask=True, biases="HxL HxW HxM".split()):
         super(Pomponia, self).__init__()
         directions = torch.tensor([v / 255 for v in HEADING_VALUES])
         self.history = history
@@ -717,7 +728,7 @@ class Pomponia(torch_nn.Module):
                     get_temporal_regressor(self.history, self.FUTURE),
                     torch_nn.Identity(),
                 ),
-                Biases(self.BIASES),
+                Biases(biases),
                 torch_nn.Sigmoid(),
             ),
             "S": torch_nn.Sequential(
@@ -725,7 +736,7 @@ class Pomponia(torch_nn.Module):
                     get_temporal_regressor(self.history, self.FUTURE),
                     torch_nn.Identity(),
                 ),
-                Biases(self.BIASES),
+                Biases(biases),
                 torch_nn.Sigmoid(),
             ),
             "H": torch_nn.Sequential(
@@ -733,7 +744,7 @@ class Pomponia(torch_nn.Module):
                     get_temporal_regressor(self.history, self.FUTURE * len(HEADING_VALUES)),
                     torch_nn.Identity(),
                 ),
-                Biases(self.BIASES, planes=5),
+                Biases(biases, planes=5),
                 WeightedSum(directions),
             ),
         })

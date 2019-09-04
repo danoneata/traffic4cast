@@ -10,4 +10,5 @@ MODELS = {
     "lygia": lambda: models.nn.TemporalDate(12, 1, 3, models.nn.Lygia(12, 1)),
     "pomponia": lambda: models.nn.TemporalDate(12, 1, 3, models.nn.Pomponia(12, 1)),
     "pomponia-no-mask": lambda: models.nn.TemporalDate(12, 1, 3, models.nn.Pomponia(12, 1, use_mask=False)),
+    "pomponia-no-mask-bias-H-W-L": lambda: models.nn.TemporalDate(12, 1, 3, models.nn.Pomponia(12, 1, use_mask=False, biases="H W L".split())),
 }
