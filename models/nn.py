@@ -254,7 +254,13 @@ class TemporalDate(torch_nn.Module):
                     sample.date,
                     [frame],
                 )
-                pred_slice = self(inp).squeeze(0)
+
+                # Prepare slice of predictions
+                pred_slice, *_ = self(inp)
+                B, T, C, H, W = pred_slice.shape
+                assert B == 1
+                pred_slice = pred_slice.view(T * C, H, W)
+
                 for pred_frame in range(pred_slice.shape[0] //
                                         self.num_channels):
                     s = pred_frame * self.num_channels
