@@ -27,10 +27,10 @@ from evaluate import ROOT
 
 SEED = 1337
 MAX_EPOCHS = 128
-PATIENCE = 4
+PATIENCE = 5
 LR_REDUCE_PARAMS = {
     "factor": 0.2,
-    "patience": 2,
+    "patience": 3,
 }
 
 
