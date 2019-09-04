@@ -157,34 +157,33 @@ def main():
     bce = nn.BCELoss()
 
     def tr_loss(inp, tgt):
-        out, mask, y = inp
+        out, mask, values = inp
+
         B, F, C, H, W = out.shape
         tgt = tgt.view(B, F, C, H, W)
-        nnzs = (tgt[:, :, :1] > 0)
-        idxs = nnzs.float()
-        nnzs = nnzs.repeat(1, 1, 3, 1, 1)
-        loss1 = mse(out, tgt)
-        loss2 = bce(mask, idxs)
-        loss3 = mse(y[nnzs], tgt[nnzs])
-        # loss4 = mse(idxs * y, tgt)  # predict perfectly the missing values
-        # loss5 = mse(mask * tgt, tgt)  # predict perfectly the values
-        # loss6 = mse(idxs * tgt, tgt) # zero
-        losses = [
-            '{:.6f}'.format(loss.detach().cpu().numpy())
-            for loss in [
-                loss1,
-                loss2,
-                loss3,
-                # loss4,
-                # loss5,
+
+        weights_losses = [(1.0, mse(out, tgt))]
+
+        if hasattr(model, "use_mask") and model.use_mask:
+            nnzs = (tgt[:, :, :1] > 0)
+            idxs = nnzs.float()
+            nnzs = nnzs.repeat(1, 1, 3, 1, 1)
+            weights_losses += [
+                (0.1, bce(mask, idxs)),
+                (0.1, mse(values[nnzs], tgt[nnzs])),
+                # mse(idxs * values, tgt)  # predict perfectly the missing values
+                # mse(mask * tgt, tgt)  # predict perfectly the values
+                # mse(idxs * tgt, tgt) # zero
             ]
-        ]
-        print(*losses)
-        return (
-            1.0 * loss1 +
-            0.1 * loss2 +
-            0.1 * loss3
+
+        str_losses = map(
+            lambda t: '{:.6f}'.format(t[1].detach().cpu().numpy()),
+            weights_losses,
         )
+        print(*list(str_losses))
+
+        return sum(weight * loss for weight, loss in weights_losses)
+
     def te_loss(inp, tgt):
         out, *_ = inp
         B, F, C, H, W = out.shape

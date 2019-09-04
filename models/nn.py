@@ -707,11 +707,10 @@ class Pomponia(torch_nn.Module):
     CHANNELS = "VSH"
     N_CHANNELS = len(CHANNELS)
 
-    def __init__(self, history: int, future: int):
+    def __init__(self, history: int, future: int, use_mask=True):
         super(Pomponia, self).__init__()
         directions = torch.tensor([v / 255 for v in HEADING_VALUES])
         self.history = history
-        self.mask_predictor = MaskPredictor2(future)
         self.channel_predictors = torch_nn.ModuleDict({
             "V": torch_nn.Sequential(
                 Bimap(
@@ -738,20 +737,27 @@ class Pomponia(torch_nn.Module):
                 WeightedSum(directions),
             ),
         })
+        self.use_mask = use_mask
+        if use_mask:
+            self.mask_predictor = MaskPredictor2(future)
 
     def forward(self, data):
         x, *extra = data
         # x.shape = B, T, C, H, W
         B, _, H, W = x.shape
         x = x.view(B, self.history, self.N_CHANNELS, H, W)
-        mask = self.mask_predictor((x, extra))
         values = (
             self.channel_predictors[c]((self._get_channel(x, c), extra)).unsqueeze(0)
             for c in self.CHANNELS
         )
         values = torch.cat(list(values), dim=2)
+        if self.use_mask:
+            mask = self.mask_predictor((x, extra))
+            out = mask * values
+        else:
+            mask = None
+            out = values
         # out.shape = B, T', C, H, W
-        out = mask * values
         return out, mask, values
 
     def _get_channel(self, x, channel):
