@@ -758,12 +758,13 @@ class Pomponia(torch_nn.Module):
         B, _, H, W = x.shape
         x = x.view(B, self.history, self.N_CHANNELS, H, W)
         values = (
-            self.channel_predictors[c]((self._get_channel(x, c), extra)).unsqueeze(0)
+            self.channel_predictors[c]((self._get_channel(x, c), extra)).unsqueeze(1)
             for c in self.CHANNELS
         )
         values = torch.cat(list(values), dim=2)
         if self.use_mask:
             mask = self.mask_predictor((x, extra))
+            mask = mask.unsqueeze(1)
             out = mask * values
         else:
             mask = None
