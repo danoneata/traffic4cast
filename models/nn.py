@@ -627,6 +627,8 @@ class Biases(torch_nn.Module):
             self.bias_H = torch_nn.Parameter(torch.zeros(24, planes, 1, 1))
         if "W" in biases_types:
             self.bias_W = torch_nn.Parameter(torch.zeros(7, planes, 1, 1))
+        if "M" in biases_types:
+            self.bias_M = torch_nn.Parameter(torch.zeros(12, planes, 1, 1))
         if "L" in biases_types:
             self.bias_L = torch_nn.Parameter(torch.zeros(1, planes, H, W))
         if "HxL" in biases_types:
@@ -643,6 +645,8 @@ class Biases(torch_nn.Module):
             x = x + self.bias_H[get_hours(frames)]
         if "W" in self.biases_types:
             x = x + self.bias_W[date.weekday()]
+        if "M" in self.biases_types:
+            x = x + self.bias_M[date.month - 1]
         if "L" in self.biases_types:
             x = x + self.bias_L
         if "HxL" in self.biases_types:
