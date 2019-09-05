@@ -169,8 +169,8 @@ def main():
             idxs = nnzs.float()
             nnzs = nnzs.repeat(1, 1, 3, 1, 1)
             weights_losses += [
-                (0.1, bce(mask, idxs)),
-                (0.1, mse(values[nnzs], tgt[nnzs])),
+                (0.01, bce(mask, idxs)),
+                (0.05, mse(values[nnzs], tgt[nnzs])),
                 # mse(idxs * values, tgt)  # predict perfectly the missing values
                 # mse(mask * tgt, tgt)  # predict perfectly the values
                 # mse(idxs * tgt, tgt) # zero
