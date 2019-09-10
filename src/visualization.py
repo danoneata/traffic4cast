@@ -29,8 +29,8 @@ def movie(sample: dataset.Traffic4CastSample,
         ax1.set_title("Volume")
         ax2.set_title("Speed")
         ax3.set_title("Heading.")
-        cardinal_color = [('N/A', 'white'), ('N', 'red'), ('E', 'green'),
-                          ('W', 'blue'), ('S', 'yellow')]
+        cardinal_color = [('N/A', 'white'), ('NW', 'red'), ('NE', 'green'),
+                          ('SW', 'blue'), ('SE', 'yellow')]
         direction_cmap = colors.ListedColormap(
             [color for _, color in cardinal_color])
         heading_legend = [
@@ -54,9 +54,10 @@ def movie(sample: dataset.Traffic4CastSample,
                 label=f"{dataset.Traffic4CastSample.time_step_delta*frame}")
         ]
         if split_channels:
+            volume = remap_volume(sample.data[frame, :, :, 0])
             direction = remap_heading(sample.data[frame, :, :, 2])
             frames.append([
-                ax1.imshow(sample.data[frame, :, :, 0], cmap='Reds'),
+                ax1.imshow(volume, cmap='Reds'),
                 ax1.legend(handles=time_legend),
                 ax2.imshow(sample.data[frame, :, :, 1], cmap='Greens'),
                 ax2.legend(handles=time_legend),
@@ -71,10 +72,16 @@ def movie(sample: dataset.Traffic4CastSample,
 
     animation.ArtistAnimation(fig,
                               frames,
-                              interval=200,
+                              interval=800,
                               blit=True,
                               repeat_delay=1000)
     plt.show()
+
+
+def remap_volume(data):
+    remapped = data.clone().detach()
+    remapped[data >= 1] = 1
+    return remapped
 
 
 def remap_heading(data: torch.tensor, heading_map: Dict = None) -> torch.tensor:
@@ -158,7 +165,7 @@ def hist(sample: dataset.Traffic4CastSample,
             xticks,
             np.histogram(valid_data[:, 2], bins=[0, 1, 85, 170, 255, 256])[0])
         axes[point * 3 + 2].set_xticks(xticks)
-        axes[point * 3 + 2].set_xticklabels(['U', 'N', 'E', 'W', 'S'])
+        axes[point * 3 + 2].set_xticklabels(['U', 'N/W', 'N/E', 'S/W', 'S/E'])
 
     plt.show()
 

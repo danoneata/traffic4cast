@@ -446,14 +446,19 @@ class SeasonalTemporalRegressionHeading(torch_nn.Module):
         self.temp_regr = torch_nn.Sequential(
             torch_nn.Conv2d(history, 16, **kwargs),
             torch_nn.ReLU(),
-            torch_nn.Conv2d(16, 16, **kwargs),
+            torch_nn.Conv2d(16, 8, **kwargs),
             torch_nn.ReLU(),
-            torch_nn.Conv2d(16, future * 5, **kwargs),
+            torch_nn.Conv2d(8, 5 * future, **kwargs),
+        )
+        self.spatial_regr = torch_nn.Sequential(
+            Conv2dLocal(495, 436, history, 1, 3, padding=1),
+            torch_nn.ReLU(),
+            Conv2dLocal(495, 436, 1, 5 * future, 3, padding=1),
         )
         self.future = future
         self.directions = HEADING_VALUES
         self.n_directions = len(self.directions)
-        self.directions = torch.tensor(self.directions).float().to('cuda').view(1, 5, 1, 1)
+        self.directions = torch.tensor(self.directions).float().to('cpu').view(1, 5, 1, 1)
         self.directions = self.directions / 255
         self.bias_loc = torch_nn.Parameter(torch.zeros(24, 1, self.n_directions, 495, 436))
         self.bias_day = torch_nn.Parameter(torch.zeros(7, 1, self.n_directions, 1, 1))
@@ -461,14 +466,17 @@ class SeasonalTemporalRegressionHeading(torch_nn.Module):
     def forward(self, x_date_frames):
         x, date, frames = x_date_frames
         B, _, H, W = x.shape
+        s = self.spatial_regr(x)
         t = self.temp_regr(x)
         t = t.view(B, self.future, self.n_directions, H, W)
+        s = s.view(B, self.future, self.n_directions, H, W)
         weekday = date.weekday()
         hours = [int(f / 12) for f in frames]
-        y = t + self.bias_loc[hours] + self.bias_day[weekday].view(1, 1, self.n_directions, 1, 1)
+        y = t + s + self.bias_loc[hours] + self.bias_day[weekday].view(1, 1, self.n_directions, 1, 1)
         y = torch.softmax(y, dim=2)
         out = (y * self.directions).sum(dim=2)
-        return out
+        out = out.unsqueeze(2)
+        return out, None, None
 
 
 def get_temporal_regressor(history, future):
@@ -780,3 +788,223 @@ class Pomponia(torch_nn.Module):
         # x.shape = B, T, C, H, W
         i = self.CHANNELS.index(channel)
         return x[:, :, i]
+
+
+class Pomponia(torch_nn.Module):
+    FUTURE = 1
+    CHANNELS = "VSH"
+    N_CHANNELS = len(CHANNELS)
+
+    def __init__(self, history: int, future: int, use_mask=True, biases="HxL HxW HxM".split()):
+        super(Pomponia, self).__init__()
+        directions = torch.tensor([v / 255 for v in HEADING_VALUES])
+        self.history = history
+        self.channel_predictors = torch_nn.ModuleDict({
+            "V": torch_nn.Sequential(
+                Bimap(
+                    get_temporal_regressor(self.history, self.FUTURE),
+                    torch_nn.Identity(),
+                ),
+                Biases(biases),
+                torch_nn.Sigmoid(),
+            ),
+            "S": torch_nn.Sequential(
+                Bimap(
+                    get_temporal_regressor(self.history, self.FUTURE),
+                    # Conv2dLocal(495, 436, self.history, self.FUTURE, 7, padding=3),
+                    torch_nn.Identity(),
+                ),
+                Biases(biases),
+                torch_nn.Sigmoid(),
+            ),
+            "H": torch_nn.Sequential(
+                Bimap(
+                    # get_temporal_regressor(self.history, self.FUTURE * len(HEADING_VALUES)),
+                    Conv2dLocal(495, 436, self.history, self.FUTURE, 3, padding=1),
+                    torch_nn.Identity(),
+                ),
+                Biases(biases, planes=5),
+                WeightedSum(directions),
+            ),
+        })
+        self.use_mask = use_mask
+        if use_mask:
+            self.mask_predictor = MaskPredictor2(future)
+
+    def forward(self, data):
+        x, *extra = data
+        # x.shape = B, T, C, H, W
+        B, _, H, W = x.shape
+        x = x.view(B, self.history, self.N_CHANNELS, H, W)
+        values = (
+            self.channel_predictors[c]((self._get_channel(x, c), extra)).unsqueeze(1)
+            for c in self.CHANNELS
+        )
+        values = torch.cat(list(values), dim=2)
+        if self.use_mask:
+            mask = self.mask_predictor((x, extra))
+            mask = mask.unsqueeze(1)
+            out = mask * values
+        else:
+            mask = None
+            out = values
+        # out.shape = B, T', C, H, W
+        return out, mask, values
+
+    def _get_channel(self, x, channel):
+        # x.shape = B, T, C, H, W
+        i = self.CHANNELS.index(channel)
+        return x[:, :, i]
+
+
+class Graecina(torch_nn.Module):
+    CHANNELS = "VSH"
+    N_CHANNELS = len(CHANNELS)
+
+    def __init__(self, history: int, future: int, biases="HxL W".split()):
+        super(Pomponia, self).__init__()
+        directions = torch.tensor([v / 255 for v in HEADING_VALUES])
+        self.history = history
+        self.future = future
+        self.channel_predictors = torch_nn.ModuleDict({
+            "V": torch_nn.Sequential(
+                Bimap(
+                    get_temporal_regressor(self.history, self.future),
+                    torch_nn.Identity(),
+                ),
+                Biases(biases),
+                torch_nn.Sigmoid(),
+            ),
+            "S": torch_nn.Sequential(
+                Bimap(
+                    get_temporal_regressor(self.history, self.future),
+                    torch_nn.Identity(),
+                ),
+                Biases(biases),
+                torch_nn.Sigmoid(),
+            ),
+            "H": torch_nn.Sequential(
+                Bimap(
+                    get_temporal_regressor(self.history, self.future * len(HEADING_VALUES)),
+                    torch_nn.Identity(),
+                ),
+                Biases(biases, planes=5),
+                WeightedSum(directions),
+            ),
+        })
+
+    def forward(self, data):
+        x, *extra = data
+        # x.shape = B, T, C, H, W
+        B, _, H, W = x.shape
+        x = x.view(B, self.history, self.N_CHANNELS, H, W)
+        values = (
+            self.channel_predictors[c]((self._get_channel(x, c), extra)).unsqueeze(1)
+            for c in self.CHANNELS
+        )
+        values = torch.cat(list(values), dim=2)
+        return out, None, None
+
+    def _get_channel(self, x, channel):
+        # x.shape = B, T, C, H, W
+        i = self.CHANNELS.index(channel)
+        return x[:, :, i]
+
+from torch import nn
+import math
+import collections
+from itertools import repeat
+
+
+def _ntuple(n):
+    def parse(x):
+        if isinstance(x, collections.Iterable):
+            return x
+        return tuple(repeat(x, n))
+    return parse
+
+_single = _ntuple(1)
+_pair = _ntuple(2)
+_triple = _ntuple(3)
+_quadruple = _ntuple(4)
+
+
+
+def conv2d_local(input, weight, bias=None, padding=0, stride=1, dilation=1):
+    if input.dim() != 4:
+        raise NotImplementedError("Input Error: Only 4D input Tensors supported (got {}D)".format(input.dim()))
+    if weight.dim() != 6:
+        # outH x outW x outC x inC x kH x kW
+        raise NotImplementedError("Input Error: Only 6D weight Tensors supported (got {}D)".format(weight.dim()))
+
+    outH, outW, outC, inC, kH, kW = weight.size()
+    kernel_size = (kH, kW)
+
+    # N x [inC * kH * kW] x [outH * outW]
+    cols = F.unfold(input, kernel_size, dilation=dilation, padding=padding, stride=stride)
+    cols = cols.view(cols.size(0), cols.size(1), cols.size(2), 1).permute(0, 2, 3, 1)
+
+    out = torch.matmul(cols, weight.view(outH * outW, outC, inC * kH * kW).permute(0, 2, 1))
+    out = out.view(cols.size(0), outH, outW, outC).permute(0, 3, 1, 2)
+
+    if bias is not None:
+        out = out + bias.expand_as(out)
+
+    return out
+
+
+class Conv2dLocal(nn.Module):
+
+    def __init__(self, in_height, in_width, in_channels, out_channels,
+                 kernel_size, stride=1, padding=0, bias=True, dilation=1):
+        super(Conv2dLocal, self).__init__()
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = _pair(kernel_size)
+        self.stride = _pair(stride)
+        self.padding = _pair(padding)
+        self.dilation = _pair(dilation)
+
+        self.in_height = in_height
+        self.in_width = in_width
+        self.out_height = int(math.floor(
+            (in_height + 2 * self.padding[0] - self.dilation[0] * (self.kernel_size[0] - 1) - 1) / self.stride[0] + 1))
+        self.out_width = int(math.floor(
+            (in_width + 2 * self.padding[1] - self.dilation[1] * (self.kernel_size[1] - 1) - 1) / self.stride[1] + 1))
+        self.weight = nn.parameter.Parameter(torch.Tensor(
+            self.out_height, self.out_width,
+            out_channels, in_channels, *self.kernel_size))
+        if bias:
+            self.bias = nn.parameter.Parameter(torch.Tensor(
+                out_channels, self.out_height, self.out_width))
+        else:
+            self.register_parameter('bias', None)
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        n = self.in_channels
+        for k in self.kernel_size:
+            n *= k
+        stdv = 1. / math.sqrt(n)
+        self.weight.data.uniform_(-stdv, stdv)
+        if self.bias is not None:
+            self.bias.data.uniform_(-stdv, stdv)
+
+    def __repr__(self):
+        s = ('{name}({in_channels}, {out_channels}, kernel_size={kernel_size}'
+             ', stride={stride}')
+        if self.padding != (0,) * len(self.padding):
+            s += ', padding={padding}'
+        if self.dilation != (1,) * len(self.dilation):
+            s += ', dilation={dilation}'
+        if self.bias is None:
+            s += ', bias=False'
+        s += ')'
+        return s.format(name=self.__class__.__name__, **self.__dict__)
+
+    def forward(self, input):
+        return conv2d_local(
+            input, self.weight, self.bias, stride=self.stride,
+            padding=self.padding, dilation=self.dilation)
