@@ -29,7 +29,13 @@ class PyTorchWorker(Worker):
         configurations passed by the bohb optimizer. """
         config["trainer_run:max_epochs"] = budget
         config["ignite_random:epoch_fraction"] = 0.1
-        return train(self.args_train, config)
+        try:
+            return train(self.args_train, config)
+        except Exception as e:
+            return {
+                "loss": 1.0,
+                "info": str(e),
+            }
 
     @staticmethod
     def get_configspace():
@@ -43,9 +49,9 @@ class PyTorchWorker(Worker):
         cs.add_hyperparameters([
             CSH.UniformFloatHyperparameter(
                 'optimizer:lr',
-                lower=1e-6,
-                upper=1e-1,
-                default_value='1e-2',
+                lower=0.001,
+                upper=0.1,
+                default_value=0.04,
                 log=True,
             ),
             CSH.OrdinalHyperparameter(
@@ -90,11 +96,11 @@ def main():
     parser.add_argument('--min-budget',
                         type=float,
                         help='Minimum budget used during the optimization',
-                        default=5)
+                        default=2)
     parser.add_argument('--max-budget',
                         type=float,
                         help='Maximum budget used during the optimization',
-                        default=50)
+                        default=32)
     parser.add_argument('--n-iterations',
                         type=int,
                         help='Number of iterations performed by the optimizer',
@@ -127,7 +133,7 @@ def main():
                         format='%(asctime)s %(message)s',
                         datefmt='%I:%M:%S')
 
-    args.callbacks = {'learning-rate-scheduler', 'early-stopping'}
+    args.callbacks = ['learning-rate-scheduler', 'early-stopping']
 
     if args.worker:
         # Start a worker in listening mode (waiting for jobs from master)

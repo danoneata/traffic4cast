@@ -30,13 +30,13 @@ SEED = 1337
 MAX_EPOCHS = 128
 PATIENCE = 4
 
-CALLBACKS = {
+CALLBACKS = [
     "learning-rate-scheduler",
     "early-stopping",
     "model-checkpoint",
     "tensorboard",
     "save-model",
-}
+]
 
 LR_REDUCE_PARAMS = {
     "factor": 0.2,
@@ -111,6 +111,8 @@ def train(args, hyper_params):
     )
     loss = nn.MSELoss()
 
+    best_loss = 1.0
+
     device = args.device
     if device.find('cuda') != -1 and not torch.cuda.is_available():
         device = 'cpu'
@@ -139,6 +141,8 @@ def train(args, hyper_params):
         trainer.state.dataloader = model.ignite_random(
             train_loader,
             **filter_dict(hyper_params, "ignite_random"))
+        nonlocal best_loss
+        best_loss = min(best_loss, metrics['loss'])
 
     if "learning-rate-scheduler" in args.callbacks:
         lr_reduce = lr_scheduler.ReduceLROnPlateau(optimizer,
@@ -191,10 +195,10 @@ def train(args, hyper_params):
         print("Model saved at:", model_path)
 
     return {
-        'loss': evaluator.state.metrics['loss'], # HpBandSter always minimizes!
+        'loss': best_loss, # HpBandSter always minimizes!
         'info': {
-            # 'args': args,
-            # 'hyper-params': hyper_params,
+            'args': vars(args),
+            'hyper-params': hyper_params,
         },
     }
 
