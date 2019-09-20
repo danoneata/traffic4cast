@@ -1,5 +1,6 @@
 from typing import List, Callable, Union, Tuple
 import datetime
+import inspect
 import math
 import os
 import random
@@ -8,6 +9,10 @@ import numpy as np
 import h5py
 import torch
 import torch.utils.data
+
+
+SEED = 1337
+random.seed(SEED)
 
 
 def path_to_date(path: str) -> datetime.datetime:
@@ -23,6 +28,12 @@ class Traffic4CastSample(object):
             data (torch.tensor): 4D torch.tensor for the sample data.
             city (str): City where data sample was collected.
             date (datetime): Date when the data sample was collected.
+            layout (str): Current axes meaning.
+            channel_layout (str): Current channels meaning.
+            valid (torch.tensor): Boolean mask, over the frames, denoting the
+                validity of the frame.(In the test set the frames that are to
+                be predicted are set to zero, hence they are not valid to use
+                for predicting other frames.)
     """
     time_step_delta = datetime.timedelta(minutes=5)
     index_to_channel = {0: "Volume", 1: "Speed", 2: "Heading"}
@@ -41,22 +52,22 @@ class Traffic4CastSample(object):
         self.city = city
         self.date = path_to_date(path)
         self.layout = None
+        self.channel_layout = None
         self.valid = None
+
+    def predicted_path(self, root):
+        filename, _ = os.path.splitext(os.path.basename(self.path))
+        return os.path.join(root, filename + ".h5")
 
     def load(self):
         """ Load the data sample in the .hdf5 file """
 
         self.data = torch.from_numpy(
             np.array(h5py.File(self.path, 'r')['array']))
-        self.layout = "THWC"
+        self.layout = 'THWC'
+        self.channel_layout = "VSH"
         self.data = self.data.to(torch.uint8)
-        self.valid = self.data.view(self.data.shape[0], -1).any(0)
-
-    def permute(self, layout: str):
-        """ Change data layout. """
-
-        self.data = self.data.permute([self.layout.find(ax) for ax in layout])
-        self.layout = layout
+        self.valid = self.data.view(self.data.shape[0], -1).any(1)
 
     def temporal_slices(
             self, size: int, frames: List[int], valid: bool
@@ -82,8 +93,8 @@ class Traffic4CastSample(object):
         time_axis = self.layout.find('T')
         for frame in frames:
             if valid:
-                yield (self.data.narrow(time_axis, frame - size,
-                                        size), self.valid[frame - size:frame])
+                yield (self.data.narrow(time_axis, frame - size, size),
+                       self.valid[frame - size:frame].clone())
             else:
                 yield self.data.narrow(time_axis, frame - size, size)
 
@@ -111,16 +122,17 @@ class Traffic4CastSample(object):
                 torch.tensor batch of temporal slices.
         """
 
-        num_batches = (len(frames) + batch_size) // batch_size
+        num_batches = (len(frames) + batch_size - 1) // batch_size
         for batch in range(num_batches):
             if batch < num_batches - 1:
                 batch_frames = frames[batch * batch_size:(batch + 1) *
                                       batch_size]
             else:
                 batch_frames = frames[batch * batch_size:]
-            yield torch.stack(
-                list(self.temporal_slices(slice_size, batch_frames,
-                                          valid=False)))
+            yield (
+                torch.stack(list(self.temporal_slices(slice_size, batch_frames, valid=False))),
+                batch_frames,
+            )
 
     def random_temporal_batches(self, num_batches: int, batch_size: int,
                                 slice_size: int) -> torch.tensor:
@@ -145,9 +157,12 @@ class Traffic4CastSample(object):
 
         num_frames = self.data.shape[self.layout.find('T')]
         for batch in range(num_batches):
-            frames = random.sample(range(slice_size, num_frames), batch_size)
-            yield torch.stack(
-                list(self.temporal_slices(slice_size, frames, valid=False)))
+            frames = random.sample(range(slice_size, num_frames - slice_size),
+                                   batch_size)
+            yield (
+                torch.stack(list(self.temporal_slices(slice_size, frames, valid=False))),
+                frames,
+            )
 
     def sliding_window_generator(self, width: int, stride: int,
                                  batch_size: int):
@@ -202,6 +217,48 @@ class Traffic4CastSample(object):
                     0, 1)
             yield batch
 
+    def permute(self, layout: str):
+        """ Change data layout. """
+
+        self.data = self.data.permute([self.layout.find(ax) for ax in layout])
+        self.layout = layout
+
+    def select_channels(self, channels: List[str]):
+        channels = set(channels)
+        if not all([c[0].upper() in self.channel_layout for c in channels]):
+            raise ValueError(
+                f"Invalid channel to select. Data channels = {self.channel_layout}"
+            )
+        if len(channels) > 3:
+            raise ValueError(f"Max 3 channels got {len(channels)} to select")
+        elif len(channels) == 3:
+            return
+        else:
+            keep = torch.tensor(
+                [self.channel_layout.find(c[0].upper()) for c in channels],
+                dtype=torch.long)
+            c_axis = self.layout.find('C')
+            self.data = torch.index_select(self.data, c_axis, keep)
+            self.channel_layout = "".join([c[0].upper() for c in channels])
+
+    class Transforms(object):
+
+        class Permute(object):
+
+            def __init__(self, to_layout: str):
+                self.layout = to_layout
+
+            def __call__(self, sample):
+                sample.permute(self.layout)
+
+        class SelectChannels(object):
+
+            def __init__(self, channels: List[str]):
+                self.channels = channels
+
+            def __call__(self, sample):
+                sample.select_channels(self.channels)
+
 
 class Traffic4CastDataset(torch.utils.data.Dataset):
     """ Implementation of the pytorch Dataset. """
@@ -241,6 +298,8 @@ class Traffic4CastDataset(torch.utils.data.Dataset):
         return self.size
 
     def __getitem__(self, idx: int):
+        if idx >= len(self):
+            raise IndexError
         for city, files in self.files.items():
             if idx >= len(files):
                 idx = idx - len(files)
@@ -250,7 +309,14 @@ class Traffic4CastDataset(torch.utils.data.Dataset):
                 break
 
         for transform in self.transforms:
-            stream.data = transform(stream.data)
+            if type(transform) in [
+                    cls
+                    for cls in Traffic4CastSample.Transforms.__dict__.values()
+                    if inspect.isclass(cls)
+            ]:
+                transform(stream)
+            else:
+                stream.data = transform(stream.data)
 
         return stream
 

@@ -126,7 +126,7 @@ def hist(sample: dataset.Traffic4CastSample,
     fig.suptitle(f"{sample.city}, {sample.date.strftime('%Y, %B %d')}")
     axes = axes.flatten()
     for i in range(sample.data.shape[3]):
-        axes[i].set_title(dataset.Traffic4CastSample.channel_label[i])
+        axes[i].set_title(dataset.Traffic4CastSample.index_to_channel[i])
 
     for point, time in enumerate(time_points):
         frame = int(time / dataset.Traffic4CastSample.time_step_delta)

@@ -3,7 +3,10 @@ import logging
 import os
 import socket
 
-from train import train
+from train import (
+    get_train_parser,
+    train,
+)
 
 import ConfigSpace as CS
 import ConfigSpace.hyperparameters as CSH
@@ -17,15 +20,15 @@ from hpbandster.optimizers import HyperBand
 
 class PyTorchWorker(Worker):
 
-    def __init__(self, city, model_type, **kwargs):
+    def __init__(self, args_train, **kwargs):
         super().__init__(**kwargs)
-        self.city = city
-        self.model_type = model_type
+        self.args_train = argss_train
 
     def compute(self, config, budget, *args, **kwargs):
         """ The input parameter "config" (dictionary) contains the sampled
         configurations passed by the bohb optimizer. """
-        return train(self.city, self.model_type, config, max_epochs=budget)
+        config["trainer_run:max_epochs"] = budget
+        return train(self.args_train, config)
 
     @staticmethod
     def get_configspace():
@@ -36,7 +39,7 @@ class PyTorchWorker(Worker):
         :return: ConfigurationsSpace-Object
         """
         cs = CS.ConfigurationSpace()
-        lr = CSH.UniformFloatHyperparameter('optimizer_lr',
+        lr = CSH.UniformFloatHyperparameter('optimizer:lr',
                                             lower=1e-6,
                                             upper=1e-1,
                                             default_value='1e-2',
@@ -48,7 +51,9 @@ class PyTorchWorker(Worker):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Parallel execution of hyper-tuning')
+        parent=train.get_train_parser(),
+        description='Parallel execution of hyper-tuning',
+    )
     parser.add_argument('--run-id',
                         required=True,
                         help='Name of the run')
@@ -95,8 +100,7 @@ def main():
     if args.worker:
         # Start a worker in listening mode (waiting for jobs from master)
         w = PyTorchWorker(
-            "Berlin",
-             "temporal-regression-speed-12",
+             args,
              run_id=args.run_id,
              host=args.hostname,
         )
