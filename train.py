@@ -192,8 +192,10 @@ def train(args, hyper_params):
 
     return {
         'loss': evaluator.state.metrics['loss'], # HpBandSter always minimizes!
-        'args': args,
-        # 'hyper_params': hyper_params,
+        'info': {
+            # 'args': args,
+            # 'hyper-params': hyper_params,
+        },
     }
 
 

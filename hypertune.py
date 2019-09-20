@@ -179,7 +179,7 @@ def main():
     inc_run = inc_runs[-1]
     all_runs = res.get_all_runs()
 
-    print("\nBEST loss {:6.2f}".format(1 - inc_run.loss))
+    print("Best loss {:6.2f}".format(inc_run.loss))
     print('A total of %i unique configurations where sampled.' %
           len(id2config.keys()))
     print('A total of %i runs where executed.' % len(all_runs))
