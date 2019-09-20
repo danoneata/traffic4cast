@@ -57,6 +57,7 @@ def filter_dict(d, q):
 def train(args, hyper_params):
 
     print(args)
+    print(hyper_params)
 
     args.channels.sort(
         key=lambda x: src.dataset.Traffic4CastSample.channel_to_index[x])

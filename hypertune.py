@@ -127,6 +127,8 @@ def main():
                         format='%(asctime)s %(message)s',
                         datefmt='%I:%M:%S')
 
+    args.callbacks = {'learning-rate-scheduler', 'early-stopping'}
+
     if args.worker:
         # Start a worker in listening mode (waiting for jobs from master)
         w = PyTorchWorker(
@@ -138,8 +140,10 @@ def main():
         w.run(background=False)
         exit(0)
 
-    result_logger = hpres.json_result_logger(directory=args.shared_directory,
-                                             overwrite=True)
+    result_logger = hpres.json_result_logger(
+        directory=args.shared_directory,
+        overwrite=True,
+    )
 
     # Start a name server
     name_server = hpns.NameServer(
