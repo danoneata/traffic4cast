@@ -450,3 +450,39 @@ class SeasonalTemporalRegressionHeading(torch_nn.Module):
         y = torch.softmax(y, dim=2)
         out = (y * self.directions).sum(dim=2)
         return out
+
+
+class Calba(torch_nn.Module):
+    def __init__(self, history: int, future: int, n_layers=3, n_channels=16):
+        super(Calba, self).__init__()
+        self.history = history
+        kwargs = dict(kernel_size=1, stride=1, padding=0, bias=True)
+
+        self.temp_regr = []
+        in_channels = history
+        for _ in range(n_layers - 1):
+            self.temp_regr.append(torch_nn.Conv2d(in_channels, n_channels, **kwargs))
+            self.temp_regr.append(torch_nn.ReLU())
+            in_channels = n_channels
+        self.temp_regr.append(torch_nn.Conv2d(in_channels, future * 5, **kwargs))
+        self.temp_regr = torch_nn.Sequential(*self.temp_regr)
+
+        self.future = future
+        self.directions = [0, 1, 85, 170, 255]
+        self.n_directions = len(self.directions)
+        self.directions = torch.tensor(self.directions).float().to('cuda').view(1, 5, 1, 1)
+        self.directions = self.directions / 255
+        self.bias_loc = torch_nn.Parameter(torch.zeros(24, 1, self.n_directions, 495, 436))
+        self.bias_day = torch_nn.Parameter(torch.zeros(7, 1, self.n_directions, 1, 1))
+
+    def forward(self, x_date_frames):
+        x, date, frames = x_date_frames
+        B, _, H, W = x.shape
+        t = self.temp_regr(x)
+        t = t.view(B, self.future, self.n_directions, H, W)
+        weekday = date.weekday()
+        hours = [int(f / 12) for f in frames]
+        y = t + self.bias_loc[hours] + self.bias_day[weekday].view(1, 1, self.n_directions, 1, 1)
+        y = torch.softmax(y, dim=2)
+        out = (y * self.directions).sum(dim=2)
+        return out

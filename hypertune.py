@@ -22,12 +22,13 @@ class PyTorchWorker(Worker):
 
     def __init__(self, args_train, **kwargs):
         super().__init__(**kwargs)
-        self.args_train = argss_train
+        self.args_train = args_train
 
     def compute(self, config, budget, *args, **kwargs):
         """ The input parameter "config" (dictionary) contains the sampled
         configurations passed by the bohb optimizer. """
         config["trainer_run:max_epochs"] = budget
+        config["ignite_random:epoch_fraction"] = 0.1
         return train(self.args_train, config)
 
     @staticmethod
@@ -39,19 +40,48 @@ class PyTorchWorker(Worker):
         :return: ConfigurationsSpace-Object
         """
         cs = CS.ConfigurationSpace()
-        lr = CSH.UniformFloatHyperparameter('optimizer:lr',
-                                            lower=1e-6,
-                                            upper=1e-1,
-                                            default_value='1e-2',
-                                            log=True)
-
-        cs.add_hyperparameters([lr])
+        cs.add_hyperparameters([
+            CSH.UniformFloatHyperparameter(
+                'optimizer:lr',
+                lower=1e-6,
+                upper=1e-1,
+                default_value='1e-2',
+                log=True,
+            ),
+            CSH.OrdinalHyperparameter(
+                'ignite_random:minibatch_size',
+                sequence=[2, 4, 8, 16, 32],
+                default_value=8,
+            ),
+            CSH.OrdinalHyperparameter(
+                'ignite_random:num_minibatches',
+                sequence=[2, 4, 8, 16, 32],
+                default_value=8,
+            ),
+            CSH.UniformIntegerHyperparameter(
+                'model:history',
+                lower=1,
+                upper=12,
+                default_value=12,
+            ),
+            CSH.UniformIntegerHyperparameter(
+                'model:n_layers',
+                lower=2,
+                upper=6,
+                default_value=3,
+            ),
+            CSH.OrdinalHyperparameter(
+                'model:n_channels',
+                sequence=[2, 4, 8, 16, 32, 64],
+                default_value=8,
+            ),
+        ])
         return cs
 
 
 def main():
     parser = argparse.ArgumentParser(
-        parents=[train.get_train_parser()],
+        parents=[get_train_parser()],
         description='Parallel execution of hyper-tuning',
     )
     parser.add_argument('--run-id',
@@ -60,11 +90,11 @@ def main():
     parser.add_argument('--min-budget',
                         type=float,
                         help='Minimum budget used during the optimization',
-                        default=1)
+                        default=5)
     parser.add_argument('--max-budget',
                         type=float,
                         help='Maximum budget used during the optimization',
-                        default=10)
+                        default=50)
     parser.add_argument('--n-iterations',
                         type=int,
                         help='Number of iterations performed by the optimizer',

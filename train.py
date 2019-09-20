@@ -61,7 +61,7 @@ def train(args, hyper_params):
     args.channels.sort(
         key=lambda x: src.dataset.Traffic4CastSample.channel_to_index[x])
 
-    model = MODELS[args.model_type]()
+    model = MODELS[args.model_type](**filter_dict(hyper_params, "model"))
     if args.model is not None:
         model_path = args.model
         model_name = os.path.basename(args.model)
@@ -106,7 +106,7 @@ def train(args, hyper_params):
 
     optimizer = torch.optim.Adam(
         model.parameters(),
-        filter_dict(hyper_params, "optimizer"),
+        **filter_dict(hyper_params, "optimizer"),
     )
     loss = nn.MSELoss()
 
@@ -131,14 +131,13 @@ def train(args, hyper_params):
 
     @trainer.on(engine.Events.EPOCH_COMPLETED)
     def log_validation_loss(trainer):
-        evaluator.run(model.ignite_all(valid_loader, args.minibatch_size))
+        evaluator.run(model.ignite_all(valid_loader, 8))
         metrics = evaluator.state.metrics
         print("Epoch {:3d} Valid loss: {:8.6f} ←".format(
             trainer.state.epoch, metrics['loss']))
-        trainer.state.dataloader = model.ignite_random(train_loader,
-                                                       args.num_minibatches,
-                                                       args.minibatch_size,
-                                                       args.epoch_fraction)
+        trainer.state.dataloader = model.ignite_random(
+            train_loader,
+            **filter_dict(hyper_params, "ignite_random"))
 
     if "learning-rate-scheduler" in args.callbacks:
         lr_reduce = lr_scheduler.ReduceLROnPlateau(optimizer,
