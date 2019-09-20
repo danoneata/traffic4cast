@@ -51,7 +51,7 @@ class PyTorchWorker(Worker):
 
 def main():
     parser = argparse.ArgumentParser(
-        parent=train.get_train_parser(),
+        parents=[train.get_train_parser()],
         description='Parallel execution of hyper-tuning',
     )
     parser.add_argument('--run-id',

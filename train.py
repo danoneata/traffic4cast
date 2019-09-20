@@ -198,7 +198,7 @@ def train(args, hyper_params):
 
 
 def get_train_parser():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--model-type",
                         type=str,
                         required=True,
@@ -242,7 +242,7 @@ def get_train_parser():
 
 def main():
     parser = argparse.ArgumentParser(
-        parent=get_train_parser(),
+        parents=[get_train_parser()],
         description="Evaluate a given model",
     )
 
@@ -274,6 +274,7 @@ def main():
                         default=16,
                         type=int,
                         help="number of minibatches per sample. Default: 16")
+    args = parser.parse_args()
 
     hyper_params = {
         "optimizer:lr": 0.04,
