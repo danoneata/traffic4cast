@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import os.path
 import pdb
@@ -280,6 +281,14 @@ def main():
                         default=16,
                         type=int,
                         help="number of minibatches per sample. Default: 16")
+    parser.add_argument(
+        "--hyper-params",
+        required=False,
+        help=(
+            "path to JSON file containing hyper-parameter configuration "
+            "(over-writes other hyper-parameters passed through the "
+            "command line)."),
+    )
     args = parser.parse_args()
 
     hyper_params = {
@@ -289,6 +298,11 @@ def main():
         "ignite_random:minibatch_size": args.minibatch_size,
         "ignite_random:num_minibatches": args.num_minibatches,
     }
+
+    if args.hyper_params and os.path.exists(args.hyper_params):
+        with open(args.hyper_params, "r") as f:
+            hyper_params1 = json.load(f)
+        hyper_params.update(hyper_params1)
 
     train(args, hyper_params)
 
