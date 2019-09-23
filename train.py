@@ -65,6 +65,10 @@ def train(args, hyper_params):
         key=lambda x: src.dataset.Traffic4CastSample.channel_to_index[x])
 
     model = MODELS[args.model_type](**filter_dict(hyper_params, "model"))
+    slice_size = model.past + model.future
+
+    assert model.future == 3
+
     if args.model is not None:
         model_path = args.model
         model_name = os.path.basename(args.model)
@@ -104,6 +108,7 @@ def train(args, hyper_params):
 
     ignite_train = ignite_selected(
         train_loader,
+        slice_size=slice_size,
         **filter_dict(hyper_params, "ignite_selected"),
     )
 
@@ -136,12 +141,13 @@ def train(args, hyper_params):
 
     @trainer.on(engine.Events.EPOCH_COMPLETED)
     def log_validation_loss(trainer):
-        evaluator.run(ignite_selected(valid_loader))
+        evaluator.run(ignite_selected(valid_loader, slice_size=slice_size))
         metrics = evaluator.state.metrics
         print("Epoch {:3d} Valid loss: {:8.6f} ←".format(
             trainer.state.epoch, metrics['loss']))
         trainer.state.dataloader = ignite_selected(
             train_loader,
+            slice_size=slice_size,
             **filter_dict(hyper_params, "ignite_selected"))
         nonlocal best_loss
         best_loss = min(best_loss, metrics['loss'])

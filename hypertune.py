@@ -28,10 +28,11 @@ class PyTorchWorker(Worker):
         """ The input parameter "config" (dictionary) contains the sampled
         configurations passed by the bohb optimizer. """
         config["trainer_run:max_epochs"] = budget
-        config["ignite_random:epoch_fraction"] = 0.1
+        config["ignite_selected:epoch_fraction"] = 0.15
         try:
             return train(self.args_train, config)
         except Exception as e:
+            print(e)
             return {
                 "loss": 1.0,
                 "info": str(e),
