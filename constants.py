@@ -8,6 +8,12 @@ BERLIN_START_FRAMES = [30, 69, 126, 186, 234]
 ISTANBUL_START_FRAMES = [57, 114, 174, 222, 258]
 MOSCOW_START_FRAMES = ISTANBUL_START_FRAMES
 
+START_FRAMES = {
+    'Berlin': BERLIN_START_FRAMES,
+    'Istanbul': ISTANBUL_START_FRAMES,
+    'Moscow': MOSCOW_START_FRAMES,
+}
+
 N_FRAMES = 3  # Predict this many frames into the future
 SUBMISSION_FRAMES = {
     city: [s + i for s in start_frames for i in range(N_FRAMES)]

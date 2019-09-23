@@ -136,7 +136,7 @@ def train(args, hyper_params):
 
     @trainer.on(engine.Events.EPOCH_COMPLETED)
     def log_validation_loss(trainer):
-        evaluator.run(model.ignite_all(valid_loader, 8))
+        evaluator.run(ignite_selected(valid_loader))
         metrics = evaluator.state.metrics
         print("Epoch {:3d} Valid loss: {:8.6f} ←".format(
             trainer.state.epoch, metrics['loss']))

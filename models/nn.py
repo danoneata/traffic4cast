@@ -13,20 +13,24 @@ import src.dataset
 import constants
 
 
-def ignite_selected(loader, slice_size=13, epoch_fraction=None):
+def ignite_selected(loader, slice_size=15, epoch_fraction=None, to_return_temporal_info=True):
     num_batches = epoch_fraction and int(len(loader) * epoch_fraction)
     for i, batch in enumerate(loader):
         for sample in batch:
-            selected_frames = constants.SUBMISSION_FRAMES[sample.city]
+            selected_frames = [f + 3 for f in constants.START_FRAMES[sample.city]]
             minibatch_size = len(selected_frames)
             num_frames = sample.data.shape[0]
-            for minibatch in sample.selected_temporal_batches(
+            for minibatch, frames in sample.selected_temporal_batches(
                     minibatch_size,
                     slice_size,
                     selected_frames,
                 ):
-                yield minibatch
-        if num_batches and i > num_batches:
+                assert frames == selected_frames
+                if to_return_temporal_info:
+                    yield minibatch, sample.date, frames
+                else:
+                    yield minibatch
+        if epoch_fraction and i >= num_batches:
             return
 
 
