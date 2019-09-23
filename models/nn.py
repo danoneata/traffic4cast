@@ -10,6 +10,24 @@ import torch.nn as torch_nn
 import torch.nn.functional as F
 
 import src.dataset
+import constants
+
+
+def ignite_selected(loader, slice_size=13, epoch_fraction=None):
+    num_batches = epoch_fraction and int(len(loader) * epoch_fraction)
+    for i, batch in enumerate(loader):
+        for sample in batch:
+            selected_frames = constants.SUBMISSION_FRAMES[sample.city]
+            minibatch_size = len(selected_frames)
+            num_frames = sample.data.shape[0]
+            for minibatch in sample.selected_temporal_batches(
+                    minibatch_size,
+                    slice_size,
+                    selected_frames,
+                ):
+                yield minibatch
+        if num_batches and i > num_batches:
+            return
 
 
 def plot_pred(data):

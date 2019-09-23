@@ -23,6 +23,7 @@ import ignite.contrib.handlers.tensorboard_logger as tensorboard_logger
 import src.dataset
 
 from models import MODELS
+from models.nn import ignite_selected
 
 from evaluate import ROOT
 
@@ -101,9 +102,9 @@ def train(args, hyper_params):
         collate_fn=src.dataset.Traffic4CastDataset.collate_list,
         shuffle=False)
 
-    ignite_train = model.ignite_random(
+    ignite_train = ignite_selected(
         train_loader,
-        **filter_dict(hyper_params, "ignite_random"),
+        **filter_dict(hyper_params, "ignite_selected"),
     )
 
     optimizer = torch.optim.Adam(
@@ -139,9 +140,9 @@ def train(args, hyper_params):
         metrics = evaluator.state.metrics
         print("Epoch {:3d} Valid loss: {:8.6f} ←".format(
             trainer.state.epoch, metrics['loss']))
-        trainer.state.dataloader = model.ignite_random(
+        trainer.state.dataloader = ignite_selected(
             train_loader,
-            **filter_dict(hyper_params, "ignite_random"))
+            **filter_dict(hyper_params, "ignite_selected"))
         nonlocal best_loss
         best_loss = min(best_loss, metrics['loss'])
 
@@ -294,9 +295,9 @@ def main():
     hyper_params = {
         "optimizer:lr": 0.04,
         "trainer_run:max_epochs": MAX_EPOCHS,
-        "ignite_random:epoch_fraction": args.epoch_fraction,
-        "ignite_random:minibatch_size": args.minibatch_size,
-        "ignite_random:num_minibatches": args.num_minibatches,
+        "ignite_selected:epoch_fraction": args.epoch_fraction,
+        # "ignite_random:minibatch_size": args.minibatch_size,
+        # "ignite_random:num_minibatches": args.num_minibatches,
     }
 
     if args.hyper_params and os.path.exists(args.hyper_params):
