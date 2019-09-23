@@ -488,7 +488,7 @@ class Calba(torch_nn.Module):
         self.future = future
         self.directions = [0, 1, 85, 170, 255]
         self.n_directions = len(self.directions)
-        self.directions = torch.tensor(self.directions).float().to('cuda').view(1, 5, 1, 1)
+        self.directions = torch.tensor(self.directions).float().view(1, 5, 1, 1)
         self.directions = self.directions / 255
         self.bias_loc = torch_nn.Parameter(torch.zeros(24, 1, self.n_directions, 495, 436))
         self.bias_day = torch_nn.Parameter(torch.zeros(7, 1, self.n_directions, 1, 1))
@@ -502,5 +502,6 @@ class Calba(torch_nn.Module):
         hours = [int(f / 12) for f in frames]
         y = t + self.bias_loc[hours] + self.bias_day[weekday].view(1, 1, self.n_directions, 1, 1)
         y = torch.softmax(y, dim=2)
-        out = (y * self.directions).sum(dim=2)
+        d = self.directions.to(x.device)
+        out = (y * d).sum(dim=2)
         return out
