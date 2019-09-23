@@ -54,16 +54,16 @@ class PyTorchWorker(Worker):
                 default_value=0.04,
                 log=True,
             ),
-            CSH.OrdinalHyperparameter(
-                'ignite_random:minibatch_size',
-                sequence=[2, 4, 8, 16, 32],
-                default_value=8,
-            ),
-            CSH.OrdinalHyperparameter(
-                'ignite_random:num_minibatches',
-                sequence=[2, 4, 8, 16, 32],
-                default_value=8,
-            ),
+            # CSH.OrdinalHyperparameter(
+            #     'ignite_random:minibatch_size',
+            #     sequence=[2, 4, 8, 16, 32],
+            #     default_value=8,
+            # ),
+            # CSH.OrdinalHyperparameter(
+            #     'ignite_random:num_minibatches',
+            #     sequence=[2, 4, 8, 16, 32],
+            #     default_value=8,
+            # ),
             CSH.UniformIntegerHyperparameter(
                 'model:history',
                 lower=1,
@@ -73,7 +73,7 @@ class PyTorchWorker(Worker):
             CSH.UniformIntegerHyperparameter(
                 'model:n_layers',
                 lower=2,
-                upper=6,
+                upper=8,
                 default_value=3,
             ),
             CSH.OrdinalHyperparameter(
