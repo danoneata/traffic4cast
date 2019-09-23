@@ -109,6 +109,10 @@ def main():
                         type=int,
                         help='Number of workers to run in parallel',
                         default=3)
+    parser.add_argument('--eta',
+                        type=int,
+                        help='Parameter of the hyper-tuning algorithm',
+                        default=3)
     parser.add_argument('--worker',
                         help='Flag to turn this into a worker process',
                         action='store_true')
@@ -165,7 +169,7 @@ def main():
         configspace=PyTorchWorker.get_configspace(),  # model can be an arg here?
         run_id=args.run_id,
         result_logger=result_logger,
-        eta=3,
+        eta=args.eta,
         host=args.hostname,
         nameserver=ns_host,
         nameserver_port=ns_port,
