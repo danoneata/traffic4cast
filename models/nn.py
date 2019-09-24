@@ -268,7 +268,7 @@ class TemporalDate(torch_nn.Module):
                 inp = (
                     slice.reshape(-1, slice.shape[2], slice.shape[3]).unsqueeze(0),
                     sample.date,
-                    [frame],
+                    [frame + 3],
                 )
                 pred_slice = self(inp).squeeze(0)
                 for pred_frame in range(pred_slice.shape[0] //
