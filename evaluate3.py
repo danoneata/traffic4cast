@@ -93,24 +93,6 @@ def main():
         num_workers=2,
         collate_fn=src.dataset.Traffic4CastDataset.collate_list)
 
-    def predict(sample, channel_transforms):
-        predictions = np.zeros(EVALUATION_SHAPE)
-        for transform in channel_transforms:
-            s = copy.deepcopy(sample)
-            transform(s)
-            for f, p in model.predict(SUBMISSION_FRAMES[args.city], s).items():
-                for c_i, c in enumerate(transform.channels):
-                    predictions[
-                        SUBMISSION_FRAMES[args.city].index(f),
-                        :,
-                        :,
-                        src.dataset.Traffic4CastSample.channel_to_index[c]
-                    ] = p[c_i]
-
-        predictions = predictions * 255.0
-        predictions = predictions.reshape(SUBMISSION_SHAPE)
-        return predictions
-
     # Cache predictions to a specified path
     # to_overwrite = args.overwrite
     # cached_predict = lambda path, *args: cache(predict, path, to_overwrite, *args)
@@ -125,16 +107,30 @@ def main():
 
     to_str = lambda v: f"{v:7.5f}"
 
-    evaluator = engine.create_supervised_evaluator(
-        model,
-        metrics={'loss': ignite.metrics.Loss(loss)},
-        device="cuda",
-        prepare_batch=model.ignite_batch,
-    )
-
+    losses = []
+    device = "cpu"
+    prepare_batch = model.ignite_batch
+    non_blocking = False
+    output_transform = lambda x, y, y_pred: (y_pred, y,)
     slice_size = model.past + model.future
-    evaluator.run(ignite_selected(loader, slice_size=slice_size))
-    print(to_str(evaluator.state.metrics["loss"]))
+
+    if device:
+        model.to(device)
+
+    def _inference(batch):
+        model.eval()
+        with torch.no_grad():
+            x, y = prepare_batch(batch, device=device, non_blocking=non_blocking)
+            y_pred = model(x)
+            return output_transform(x, y, y_pred)
+
+    for batch in ignite_selected(loader, slice_size=slice_size):
+        output = _inference(batch)
+        curr_loss = loss(output[0], output[1]).item()
+        losses.append(curr_loss)
+        print(curr_loss)
+
+    print(to_str(np.mean(losses)))
 
 
 if __name__ == "__main__":
