@@ -509,3 +509,27 @@ class Calba(torch_nn.Module):
         d = self.directions.to(x.device)
         out = (y * d).sum(dim=2)
         return out
+
+
+class Petronius(torch_nn.Module):
+    def __init__(self, history):
+        super(Petronius, self).__init__()
+        kwargs = dict(kernel_size=1, stride=1, padding=0, bias=True)
+        self.bias = torch_nn.Parameter(torch.zeros(5, 3, 495, 436))
+        self.bias_day = torch_nn.Parameter(torch.zeros(7))
+        self.history = history
+        self.temp_regr = torch_nn.Sequential(
+            torch_nn.Conv2d(history, 16, **kwargs),
+            torch_nn.ReLU(),
+            torch_nn.Conv2d(16, 16, **kwargs),
+            torch_nn.ReLU(),
+            torch_nn.Conv2d(16, 3, **kwargs),
+            torch_nn.Tanh(),
+        )
+
+    def forward(self, data):
+        x, date, _ = data
+        weekday = date.weekday()
+        B, _, H, W = x.shape
+        out = self.temp_regr(x) + self.bias + self.bias_day[weekday]
+        return out
