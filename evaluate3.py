@@ -29,6 +29,15 @@ def get_prediction_folder(split, model_name, city):
     return os.path.join("output", "predictions", split, model_name, city)
 
 
+def round_torch(t):
+    t = torch.min(t, torch.ones(t.shape).to(t.device))
+    t = torch.max(t, torch.zeros(t.shape).to(t.device))
+    t = t * 255
+    t = t.type(torch.uint8)
+    t = t.type(torch.float) / 255.0
+    return t
+
+
 def main():
     parser = argparse.ArgumentParser(description="Evaluate a given model")
     parser.add_argument("-m",
@@ -108,7 +117,7 @@ def main():
     to_str = lambda v: f"{v:7.5f}"
 
     losses = []
-    device = "cpu"
+    device = "cuda"
     prepare_batch = model.ignite_batch
     non_blocking = False
     output_transform = lambda x, y, y_pred: (y_pred, y,)
@@ -126,7 +135,7 @@ def main():
 
     for batch in ignite_selected(loader, slice_size=slice_size):
         output = _inference(batch)
-        curr_loss = loss(output[0], output[1]).item()
+        curr_loss = loss(round_torch(output[0]), output[1]).item()
         losses.append(curr_loss)
         print(curr_loss)
 
