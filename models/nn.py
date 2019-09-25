@@ -533,3 +533,93 @@ class Petronius(torch_nn.Module):
         B, _, H, W = x.shape
         out = self.temp_regr(x) + self.bias + self.bias_day[weekday]
         return out
+
+
+class Filter1x1(torch_nn.Module):
+    def __init__(self, inplanes, outplanes):
+        super(Filter1x1, self).__init__()
+        self.w = torch_nn.Parameter(torch.randn(1, outplanes, inplanes, 495, 436))
+        self.b = torch_nn.Parameter(torch.zeros(1, outplanes,        1, 495, 436))
+
+    def forward(self, x):
+        # x.shape = B x      C x H x W
+        # w.shape = 1 x C' x C x H x W
+        o = (self.w * x.unsqueeze(1)).sum(dim=2, keepdim=True) + self.b
+        return o.squeeze(2)
+
+
+class GetLastChannels(torch_nn.Module):
+    def __init__(self, t):
+        super(GetLastChannels, self).__init__()
+        self.t = t
+
+    def forward(self, x):
+        return x[:, -self.t:]
+
+
+def build_uniform_network(
+        get_block,
+        get_activ,
+        history,
+        future,
+        n_layers,
+        n_channels,
+    ):
+    network = []
+    in_channels = history
+    network.append(GetLastChannels(history))
+    for _ in range(n_layers - 1):
+        network.append(get_block(in_channels, n_channels))
+        network.append(get_activ())
+        in_channels = n_channels
+    network.append(get_block(n_channels, future))
+    network.append(torch_nn.Tanh())  # FIXME Should we parmeterize the output activation?
+    return torch_nn.Sequential(*network)
+
+
+class PetroniusParam(torch_nn.Module):
+    """Parameterized version of Petronius used for hyper-parameter tuning."""
+    N_BATCH = 5
+    FUTURE = 3
+    HEIGHT = 495
+    WIDTH = 436
+
+    def __init__(self, temp_reg_params, filt_1x1_params, biases_type):
+        super(PetroniusParam, self).__init__()
+        kernel_size = temp_reg_params.pop("kernel_size")
+        padding = (kernel_size - 1) // 2
+        get_block_conv = lambda i, o: torch_nn.Conv2d(i, o, kernel_size=kernel_size, stride=1, padding=padding, bias=True)
+        get_block_f1x1 = lambda i, o: Filter1x1(i, o)
+        get_activ = lambda: torch_nn.ReLU()
+        self.temp_reg = build_uniform_network(get_block_conv, get_activ, future=self.FUTURE, **temp_reg_params)
+        self.filt_1x1 = build_uniform_network(get_block_f1x1, get_activ, future=self.FUTURE, **filt_1x1_params)
+        # Biases
+        self.bias_loctime = torch_nn.ParameterList(self._get_bias_loctime(biases_type["loctime"]))
+        self.bias_weekday = torch_nn.Parameter(torch.zeros(7)) if biases_type["weekday"] else None
+
+    def forward(self, data):
+        x, date, _ = data
+        B, _, H, W = x.shape
+        out = self.temp_reg(x) + self.filt_1x1(x)
+        # Add the biases
+        for b in self.bias_loctime:
+            out = out + b
+        if self.bias_weekday:
+            out = out + self.bias_weekday[date.weekday()]
+        return out
+
+    def _get_bias_loctime(self, type1):
+        get_param = lambda *shape: torch_nn.Parameter(torch.zeros(*shape))
+        if type1 == "L":
+            return [get_param(1, 1, self.HEIGHT, self.WIDTH)]
+        elif type1 == "T":
+            return [get_param(self.N_BATCH, self.FUTURE, 1, 1)]
+        elif type1 == "LxT":
+            return [get_param(self.N_BATCH, self.FUTURE, self.WIDTH, self.HEIGHT)]
+        elif type1 == "L+T":
+            return [
+                get_param(1, 1, self.HEIGHT, self.WIDTH),
+                get_param(self.N_BATCH, self.FUTURE, 1, 1),
+            ]
+        else:
+            assert False, "Unknown type of bias"
