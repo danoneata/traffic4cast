@@ -283,10 +283,10 @@ def main():
 
     parser.add_argument("--epoch-fraction",
                         required=False,
-                        default=0.5,
+                        default=0.2,
                         type=epoch_fraction,
                         help=("fraction of the training set to use each epoch."
-                              "Value must be in (0, 1.0] Default: 0.5."
+                              "Value must be in (0, 1.0] Default: 0.2."
                               "At least one sample will be used if the fraction"
                               "is less than a sample."))
     parser.add_argument("--minibatch-size",
