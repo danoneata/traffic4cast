@@ -22,6 +22,8 @@ import ignite.contrib.handlers.tensorboard_logger as tensorboard_logger
 
 import src.dataset
 
+import utils
+
 from models import MODELS
 from models.nn import ignite_selected
 
@@ -61,8 +63,7 @@ def train(args, hyper_params):
     print(args)
     print(hyper_params)
 
-    args.channels.sort(
-        key=lambda x: src.dataset.Traffic4CastSample.channel_to_index[x])
+    args.channels.sort(key=lambda x: src.dataset.Traffic4CastSample.channel_to_index[x])
 
     model = MODELS[args.model_type](**filter_dict(hyper_params, "model"))
     slice_size = model.past + model.future
@@ -198,8 +199,17 @@ def train(args, hyper_params):
 
     trainer.run(ignite_train, **filter_dict(hyper_params, "trainer_run"))
 
-    if "save-model" in args.callbacks:
+    if "save-model" in args.callbacks and not "model-checkpoint" in args.callbacks:
         torch.save(model.state_dict(), model_path)
+        print("Model saved at:", model_path)
+    elif "save-model" in args.callbacks:
+        # Move best model from checkpoint directory to output/models
+        checkpoints_dir = "output/models/checkpoints"
+        source, *_ = [
+            f for f in reversed(utils.sorted_ls(checkpoints_dir))
+            if f.startswith(model_name)
+        ]  # get most recent model
+        os.rename(os.path.join(checkpoints_dir, source), model_path)
         print("Model saved at:", model_path)
 
     return {

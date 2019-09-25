@@ -33,6 +33,11 @@ def date_to_day_frame(date: datetime) -> (datetime, int):
     return day, frame
 
 
+def sorted_ls(path):
+    mtime = lambda f: os.stat(os.path.join(path, f)).st_mtime
+    return list(sorted(os.listdir(path), key=mtime))
+
+
 def sliding_window(data, size, stepsize=1, axis=-1, copy=True):
     """
     Calculate a sliding window over a signal
