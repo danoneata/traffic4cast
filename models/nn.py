@@ -572,7 +572,7 @@ def build_uniform_network(
         network.append(get_block(in_channels, n_channels))
         network.append(get_activ())
         in_channels = n_channels
-    network.append(get_block(n_channels, future))
+    network.append(get_block(in_channels, future))
     network.append(torch_nn.Tanh())  # FIXME Should we parmeterize the output activation?
     return torch_nn.Sequential(*network)
 
@@ -592,20 +592,25 @@ class PetroniusParam(torch_nn.Module):
         get_block_f1x1 = lambda i, o: Filter1x1(i, o)
         get_activ = lambda: torch_nn.ReLU()
         self.temp_reg = build_uniform_network(get_block_conv, get_activ, future=self.FUTURE, **temp_reg_params)
-        self.filt_1x1 = build_uniform_network(get_block_f1x1, get_activ, future=self.FUTURE, **filt_1x1_params)
+        self.filt_1x1 = build_uniform_network(get_block_f1x1, get_activ, future=self.FUTURE, **filt_1x1_params) if filt_1x1_params["n_layers"] else None
         # Biases
         self.bias_loctime = torch_nn.ParameterList(self._get_bias_loctime(biases_type["loctime"]))
         self.bias_weekday = torch_nn.Parameter(torch.zeros(7)) if biases_type["weekday"] else None
+        self.bias_month = torch_nn.Parameter(torch.zeros(12)) if biases_type["month"] else None
 
     def forward(self, data):
         x, date, _ = data
         B, _, H, W = x.shape
-        out = self.temp_reg(x) + self.filt_1x1(x)
+        out = self.temp_reg(x)
+        if self.filt_1x1 is not None:
+            out = out + self.filt_1x1(x)
         # Add the biases
         for b in self.bias_loctime:
             out = out + b
-        if self.bias_weekday:
+        if self.bias_weekday is not None:
             out = out + self.bias_weekday[date.weekday()]
+        if self.bias_month is not None:
+            out = out + self.bias_month[date.month - 1]
         return out
 
     def _get_bias_loctime(self, type1):

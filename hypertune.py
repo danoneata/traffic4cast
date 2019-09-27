@@ -3,6 +3,8 @@ import logging
 import os
 import socket
 
+from itertools import groupby
+
 from train import (
     get_train_parser,
     train,
@@ -18,7 +20,7 @@ from hpbandster.core.worker import Worker
 from hpbandster.optimizers import HyperBand
 
 
-class PyTorchWorker(Worker):
+class CalbaWorker(Worker):
 
     def __init__(self, args_train, **kwargs):
         super().__init__(**kwargs)
@@ -86,6 +88,111 @@ class PyTorchWorker(Worker):
         return cs
 
 
+
+class PetroniusWorker(Worker):
+
+    def __init__(self, args_train, **kwargs):
+        super().__init__(**kwargs)
+        self.args_train = args_train
+
+    def compute(self, config, budget, *args, **kwargs):
+        """ The input parameter "config" (dictionary) contains the sampled
+        configurations passed by the bohb optimizer. """
+        config["trainer_run:max_epochs"] = budget
+        config_model = sorted(key for key in config.keys() if key.split(":")[0] == "model")
+        for k, g in groupby(config_model, key=lambda v: v.split(".")[0]):
+            config[k] = {}
+            for v in g:
+                _, u = v.split(".")
+                config[k][u] = config.pop(v)
+        try:
+            return train(self.args_train, config)
+        except Exception as e:
+            print(e)
+            return {
+                "loss": 1.0,
+                "info": str(e),
+            }
+
+    @staticmethod
+    def get_configspace():
+        """ It builds the configuration space with the needed hyperparameters.
+        It is easily possible to implement different types of hyperparameters.
+        Beside float-hyperparameters on a log scale, it is also able to handle
+        categorical input parameter.
+        :return: ConfigurationsSpace-Object
+        """
+        cs = CS.ConfigurationSpace()
+        cs.add_hyperparameters([
+            CSH.UniformFloatHyperparameter(
+                'optimizer:lr',
+                lower=0.001,
+                upper=0.1,
+                default_value=0.04,
+                log=True,
+            ),
+            CSH.UniformIntegerHyperparameter(
+                'model:temp_reg_params.history',
+                lower=1,
+                upper=12,
+                default_value=12,
+            ),
+            CSH.UniformIntegerHyperparameter(
+                'model:temp_reg_params.n_layers',
+                lower=2,
+                upper=8,
+                default_value=3,
+            ),
+            CSH.OrdinalHyperparameter(
+                'model:temp_reg_params.n_channels',
+                sequence=[2, 4, 8, 16, 32, 64],
+                default_value=8,
+            ),
+            CSH.OrdinalHyperparameter(
+                'model:temp_reg_params.kernel_size',
+                sequence=[1, 3, 5],
+                default_value=1,
+            ),
+            CSH.UniformIntegerHyperparameter(
+                'model:filt_1x1_params.history',
+                lower=1,
+                upper=12,
+                default_value=12,
+            ),
+            CSH.UniformIntegerHyperparameter(
+                'model:filt_1x1_params.n_layers',
+                lower=0,
+                upper=2,
+                default_value=0,
+            ),
+            CSH.OrdinalHyperparameter(
+                'model:filt_1x1_params.n_channels',
+                sequence=[2, 4, 8, 16],
+                default_value=8,
+            ),
+            CSH.CategoricalHyperparameter(
+                'model:biases_type.loctime',
+                choices="L T LxT L+T".split(),
+            ),
+            CSH.CategoricalHyperparameter(
+                'model:biases_type.weekday',
+                choices=[False, True],
+            ),
+            CSH.CategoricalHyperparameter(
+                'model:biases_type.month',
+                choices=[False, True],
+            ),
+        ])
+        return cs
+
+
+
+WORKERS = {
+    "calba": CalbaWorker,
+    "petronius-param": PetroniusWorker,
+}
+
+
 def main():
     parser = argparse.ArgumentParser(
         parents=[get_train_parser()],
@@ -97,15 +204,15 @@ def main():
     parser.add_argument('--min-budget',
                         type=float,
                         help='Minimum budget used during the optimization',
-                        default=2)
+                        default=1)
     parser.add_argument('--max-budget',
                         type=float,
                         help='Maximum budget used during the optimization',
-                        default=32)
+                        default=64)
     parser.add_argument('--n-iterations',
                         type=int,
                         help='Number of iterations performed by the optimizer',
-                        default=1)
+                        default=3)
     parser.add_argument('--n-workers',
                         type=int,
                         help='Number of workers to run in parallel',
@@ -113,7 +220,7 @@ def main():
     parser.add_argument('--eta',
                         type=int,
                         help='Parameter of the hyper-tuning algorithm',
-                        default=3)
+                        default=4)
     parser.add_argument('--worker',
                         help='Flag to turn this into a worker process',
                         action='store_true')
@@ -127,6 +234,8 @@ def main():
                         default='output/hypertune')
     args = parser.parse_args()
     print(args)
+
+    MyWorker = WORKERS[args.model_type]
 
     if not args.hostname and socket.gethostname().lower().startswith('lenovo'):
         # If we are on cluster set IP
@@ -142,7 +251,7 @@ def main():
 
     if args.worker:
         # Start a worker in listening mode (waiting for jobs from master)
-        w = PyTorchWorker(
+        w = MyWorker(
              args,
              run_id=args.run_id,
              host=args.hostname,
@@ -167,7 +276,7 @@ def main():
 
     # Run and optimizer
     bohb = HyperBand(
-        configspace=PyTorchWorker.get_configspace(),  # model can be an arg here?
+        configspace=MyWorker.get_configspace(),  # model can be an arg here?
         run_id=args.run_id,
         result_logger=result_logger,
         eta=args.eta,
