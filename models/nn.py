@@ -620,7 +620,7 @@ class PetroniusParam(torch_nn.Module):
         elif type1 == "T":
             return [get_param(self.N_BATCH, self.FUTURE, 1, 1)]
         elif type1 == "LxT":
-            return [get_param(self.N_BATCH, self.FUTURE, self.WIDTH, self.HEIGHT)]
+            return [get_param(self.N_BATCH, self.FUTURE, self.HEIGHT, self.WIDTH)]
         elif type1 == "L+T":
             return [
                 get_param(1, 1, self.HEIGHT, self.WIDTH),
