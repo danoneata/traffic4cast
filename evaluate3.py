@@ -114,7 +114,7 @@ def main():
     # dirname = get_prediction_folder(args.split, model_name, args.city)
     # os.makedirs(dirname, exist_ok=True)
 
-    to_str = lambda v: f"{v:7.5f}"
+    to_str = lambda v: f"{v:9.7f}"
 
     losses = []
     device = "cuda"
@@ -137,7 +137,8 @@ def main():
         output = _inference(batch)
         curr_loss = loss(round_torch(output[0]), output[1]).item()
         losses.append(curr_loss)
-        print(curr_loss)
+        if args.verbose:
+            print(to_str(curr_loss))
 
     print(to_str(np.mean(losses)))
 
