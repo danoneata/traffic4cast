@@ -89,7 +89,7 @@ class CalbaWorker(Worker):
 
 
 
-class PetroniusWorker(Worker):
+class PetroniusParamWorker(Worker):
 
     def __init__(self, args_train, **kwargs):
         super().__init__(**kwargs)
@@ -99,6 +99,7 @@ class PetroniusWorker(Worker):
         """ The input parameter "config" (dictionary) contains the sampled
         configurations passed by the bohb optimizer. """
         config["trainer_run:max_epochs"] = budget
+        config["ignite_selected:epoch_fraction"] = 0.2
         config_model = sorted(key for key in config.keys() if key.split(":")[0] == "model")
         for k, g in groupby(config_model, key=lambda v: v.split(".")[0]):
             config[k] = {}
@@ -189,7 +190,7 @@ class PetroniusWorker(Worker):
 
 WORKERS = {
     "calba": CalbaWorker,
-    "petronius-param": PetroniusWorker,
+    "petronius-param": PetroniusParamWorker,
 }
 
 
