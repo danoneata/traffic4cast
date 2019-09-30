@@ -628,3 +628,123 @@ class PetroniusParam(torch_nn.Module):
             ]
         else:
             assert False, "Unknown type of bias"
+
+
+class PetroniusHeading(torch_nn.Module):
+    """Version of Petronius for the heading channel. This version allows for
+    input and output embeddings.
+
+    """
+    N_BATCH = 5
+    FUTURE = 3
+    HEIGHT = 495
+    WIDTH = 436
+    BIASES_TYPE = {
+        "loctime": "L+T",
+        "weekday": True,
+        "month": True,
+    }
+    TEMP_REG_PARAMS = {
+        "history": 12,
+        "kernel_size": 1,
+        "n_channels": 16,
+        "n_layers": 6,
+    }
+    EMB_DIM_IN = 2
+    DIRECTIONS = torch.tensor([0, 1, 85, 170, 255]).float() / 255
+    N_DIRECTIONS = 5
+
+    def __init__(self, embeddings_type):
+        super(PetroniusHeading, self).__init__()
+        # Prepare parameters
+        temp_reg_params = self.TEMP_REG_PARAMS
+        biases_type = self.BIASES_TYPE
+        kernel_size = temp_reg_params.pop("kernel_size")
+        history = temp_reg_params.pop("history")
+        if embeddings_type["in"]:
+            history = self.EMB_DIM_IN * history
+        if embeddings_type["out"]:
+            future = self.N_DIRECTIONS * self.FUTURE
+        padding = (kernel_size - 1) // 2
+        get_block_conv = lambda i, o: torch_nn.Conv2d(
+            i,
+            o,
+            kernel_size=kernel_size,
+            stride=1,
+            padding=padding,
+            bias=True,
+        )
+        get_activ = lambda: torch_nn.ReLU()
+        self.temp_reg = build_uniform_network(
+            get_block_conv,
+            get_activ,
+            future=future,
+            history=history,
+            **temp_reg_params,
+        )
+        # Embeddings
+        self.emb1 = (
+            torch.nn.Embedding(self.N_DIRECTIONS, self.EMB_DIM_IN)
+            if embeddings_type["in"]
+            else None
+        )
+        self.emb2 = embeddings_type["out"]
+        # Biases
+        self.bias_loctime = torch_nn.ParameterList(self._get_bias_loctime(biases_type["loctime"]))
+        self.bias_weekday = torch_nn.Parameter(torch.zeros(7)) if biases_type["weekday"] else None
+        self.bias_month = torch_nn.Parameter(torch.zeros(12)) if biases_type["month"] else None
+
+    def forward(self, data):
+        x, date, _ = data
+        B, _, H, W = x.shape
+        self.DIRECTIONS = self.DIRECTIONS.to(x.device)
+        # Input embedding
+        if self.emb1 is not None:
+            x = self._embed_in(x)
+        out = self.temp_reg(x)
+        if self.emb2 is not None:
+            out = out.view(B, self.FUTURE, self.N_DIRECTIONS, H, W)
+        # Add the biases
+        for b in self.bias_loctime:
+            out = out + b
+        if self.bias_weekday is not None:
+            out = out + self.bias_weekday[date.weekday()]
+        if self.bias_month is not None:
+            out = out + self.bias_month[date.month - 1]
+        # Output embedding
+        if self.emb2 is not None:
+            out = torch.softmax(out, dim=2)
+            out = (out * self.DIRECTIONS.view(1, 1, self.N_DIRECTIONS, 1, 1)).sum(dim=2)
+        return out
+
+    def _embed_in(self, x):
+        y = torch.zeros(x.shape).long().to(x.device)
+        for i, v in enumerate(self.DIRECTIONS):
+            y[x == v] = i
+        y = self.emb1(y)
+        y = y.permute(0, 1, 4, 2, 3)
+        B, T, C, H, W = y.shape
+        y = y.reshape(B, T * C, H, W)
+        return y
+
+    def _get_shape(self, n_batch, n_channels, height, width):
+        if self.emb2:
+            return n_batch, n_channels, self.N_DIRECTIONS, height, width
+        else:
+            return n_batch, n_channels, height, width
+
+    def _get_bias_loctime(self, type1):
+        get_param = lambda *shape: torch_nn.Parameter(torch.zeros(self._get_shape(*shape)))
+        if type1 == "L":
+            return [get_param(1, 1, self.HEIGHT, self.WIDTH)]
+        elif type1 == "T":
+            return [get_param(self.N_BATCH, self.FUTURE, 1, 1)]
+        elif type1 == "LxT":
+            return [get_param(self.N_BATCH, self.FUTURE, self.HEIGHT, self.WIDTH)]
+        elif type1 == "L+T":
+            return [
+                get_param(1, 1, self.HEIGHT, self.WIDTH),
+                get_param(self.N_BATCH, self.FUTURE, 1, 1),
+            ]
+        else:
+            assert False, "Unknown type of bias"

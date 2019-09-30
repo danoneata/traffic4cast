@@ -10,4 +10,5 @@ MODELS = {
     "calba": lambda history=12, n_layers=3, n_channels=16: models.nn.TemporalDate(history, 3, 1, models.nn.Calba(history, 3, n_layers, n_channels)),
     "petronius": lambda history=12: models.nn.TemporalDate(history, 3, 1, models.nn.Petronius(history)),
     "petronius-param": lambda *args, **kwargs: models.nn.TemporalDate(12, 3, 1, models.nn.PetroniusParam(*args, **kwargs)),
+    "petronius-heading": lambda *args, **kwargs: models.nn.TemporalDate(12, 3, 1, models.nn.PetroniusHeading(*args, **kwargs)),
 }
