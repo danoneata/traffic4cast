@@ -767,7 +767,7 @@ class Marcus(torch_nn.Module):
     DIRECTIONS = torch.tensor([0, 1, 85, 170, 255]).float() / 255
     N_DIRECTIONS = 5
 
-    def __init__(self, use_local_filt):
+    def __init__(self, local_filt_params):
         super(Marcus, self).__init__()
         get_block_conv = lambda i, o: torch_nn.Conv2d(
             i,
