@@ -309,7 +309,7 @@ def main():
     args = parser.parse_args()
 
     hyper_params = {
-        "optimizer:lr": 0.04,
+        "optimizer:lr": 0.01,
         "trainer_run:max_epochs": MAX_EPOCHS,
         "ignite_selected:epoch_fraction": args.epoch_fraction,
         # "ignite_random:minibatch_size": args.minibatch_size,

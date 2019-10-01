@@ -12,6 +12,8 @@ import torch.nn.functional as F
 import src.dataset
 import constants
 
+from models.layers import Conv2dLocal
+
 
 def ignite_selected(loader, slice_size=15, epoch_fraction=None, to_return_temporal_info=True):
     num_batches = epoch_fraction and int(len(loader) * epoch_fraction)
@@ -564,6 +566,7 @@ def build_uniform_network(
         future,
         n_layers,
         n_channels,
+        out_activ=lambda: torch_nn.Tanh(),
     ):
     network = []
     in_channels = history
@@ -573,7 +576,8 @@ def build_uniform_network(
         network.append(get_activ())
         in_channels = n_channels
     network.append(get_block(in_channels, future))
-    network.append(torch_nn.Tanh())  # FIXME Should we parmeterize the output activation?
+    if out_activ is not None:
+        network.append(out_activ())  # FIXME Should we parmeterize the output activation?
     return torch_nn.Sequential(*network)
 
 
@@ -748,3 +752,71 @@ class PetroniusHeading(torch_nn.Module):
             ]
         else:
             assert False, "Unknown type of bias"
+
+
+class Marcus(torch_nn.Module):
+
+    FUTURE = 3
+    HISTORY = 12
+    N_LAYERS = 3
+    N_BATCHES = 5
+    N_CHANNELS = 16
+    HEIGHT = 495
+    WIDTH = 436
+
+    DIRECTIONS = torch.tensor([0, 1, 85, 170, 255]).float() / 255
+    N_DIRECTIONS = 5
+
+    def __init__(self, use_local_filt):
+        super(Marcus, self).__init__()
+        get_block_conv = lambda i, o: torch_nn.Conv2d(
+            i,
+            o,
+            kernel_size=1,
+            stride=1,
+            padding=0,
+            bias=True,
+        )
+        get_activ = lambda: torch_nn.ReLU()
+        self.temp_reg = build_uniform_network(
+            get_block_conv,
+            get_activ,
+            history=self.HISTORY,
+            future=self.N_DIRECTIONS * self.FUTURE,
+            n_layers=self.N_LAYERS,
+            n_channels=self.N_CHANNELS,
+            out_activ=None,
+        )
+        self.local_filt = (
+            torch_nn.Sequential(
+                GetLastChannels(local_filt_params["history"]),
+                Conv2dLocal(self.HEIGHT, self.WIDTH, local_filt_params["history"], local_filt_params["n_channels"], 5, padding=2),
+                torch_nn.ReLU(),
+                Conv2dLocal(self.HEIGHT, self.WIDTH, local_filt_params["n_channels"], local_filt_params["n_channels"], 3, padding=1),
+                torch_nn.ReLU(),
+                get_block_conv(N, self.N_DIRECTIONS * self.FUTURE),
+            )
+            if local_filt_params["n_layers"] > 0
+            else None
+        )
+        self.bias = torch_nn.Parameter(torch.zeros(
+            self.N_BATCHES,
+            self.FUTURE,
+            self.N_DIRECTIONS,
+            self.HEIGHT,
+            self.WIDTH,
+        ))
+
+    def forward(self, data):
+        x, date, _ = data
+        B, _, H, W = x.shape
+        d = self.DIRECTIONS.to(x.device)
+        out = self.temp_reg(x)
+        if self.local_filt is not None:
+            out = out + self.local_filt(x)
+        out = out.view(B, self.FUTURE, self.N_DIRECTIONS, H, W)
+        out = out + self.bias
+        # out = torch.sigmoid(out)
+        out = torch.softmax(out, dim=2)
+        out = (out * d.view(1, 1, self.N_DIRECTIONS, 1, 1)).sum(dim=2)
+        return out
