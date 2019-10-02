@@ -12,4 +12,5 @@ MODELS = {
     "petronius-param": lambda *args, **kwargs: models.nn.TemporalDate(12, 3, 1, models.nn.PetroniusParam(*args, **kwargs)),
     "petronius-heading": lambda *args, **kwargs: models.nn.TemporalDate(12, 3, 1, models.nn.PetroniusHeading(*args, **kwargs)),
     "marcus": lambda *args, **kwargs: models.nn.TemporalDate(12, 3, 1, models.nn.Marcus(*args, **kwargs)),
+    "vicinius": lambda *args, **kwargs: models.nn.TemporalDate(12, 3, 1, models.nn.Vicinius(*args, **kwargs)),
 }

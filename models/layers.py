@@ -104,3 +104,32 @@ class Conv2dLocal(nn.Module):
         return conv2d_local(
             input, self.weight, self.bias, stride=self.stride,
             padding=self.padding, dilation=self.dilation)
+
+
+class DenseBasicBlock(nn.Module):
+    def __init__(self, in_planes, out_planes, drop_rate=0.0):
+        super(DenseBasicBlock, self).__init__()
+        self.relu = nn.ReLU(inplace=True)
+        self.conv1 = nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=1, padding=0, bias=True)
+        self.drop_rate = drop_rate
+
+    def forward(self, x):
+        out = self.conv1(self.relu(x))
+        if self.drop_rate > 0:
+            out = F.dropout(out, p=self.drop_rate, training=self.training)
+        return torch.cat([x, out], 1)
+
+
+class DenseBlock(nn.Module):
+    def __init__(self, nb_layers, in_planes, growth_rate, block, drop_rate=0.0):
+        super(DenseBlock, self).__init__()
+        self.layer = self._make_layer(block, in_planes, growth_rate, nb_layers, drop_rate)
+
+    def _make_layer(self, block, in_planes, growth_rate, nb_layers, drop_rate):
+        layers = []
+        for i in range(nb_layers):
+            layers.append(block(in_planes + i * growth_rate, growth_rate, drop_rate))
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.layer(x)

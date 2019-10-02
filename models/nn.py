@@ -12,7 +12,11 @@ import torch.nn.functional as F
 import src.dataset
 import constants
 
-from models.layers import Conv2dLocal
+from models.layers import (
+    Conv2dLocal,
+    DenseBasicBlock,
+    DenseBlock,
+)
 
 
 def ignite_selected(loader, slice_size=15, epoch_fraction=None, to_return_temporal_info=True):
@@ -856,3 +860,52 @@ class Marcus(torch_nn.Module):
         B, T, C, H, W = y.shape
         y = y.reshape(B, T * C, H, W)
         return y
+
+
+class Vicinius(torch_nn.Module):
+
+    FUTURE = 3
+    HISTORY = 12
+    N_LAYERS = 3
+    N_BATCHES = 5
+    N_CHANNELS = 16
+    HEIGHT = 495
+    WIDTH = 436
+
+    DIRECTIONS = torch.tensor([0, 1, 85, 170, 255]).float() / 255
+    N_DIRECTIONS = 5
+
+    def __init__(self):
+        super(Vicinius, self).__init__()
+        self.conv1 = torch_nn.Conv2d(12, 8, kernel_size=1, stride=1, padding=0, bias=True)
+        self.dense = DenseBlock(3, 8, 4, DenseBasicBlock)
+        self.relu1 = torch_nn.ReLU(inplace=True)
+        self.conv2 = torch_nn.Conv2d(20, 15, kernel_size=1, stride=1, padding=0, bias=True)
+        self.bias = torch_nn.Parameter(torch.zeros(
+            self.N_BATCHES,
+            1, # self.FUTURE,
+            self.N_DIRECTIONS,
+            self.HEIGHT,
+            self.WIDTH,
+        ))
+        self.bias_weekday = torch_nn.Parameter(torch.zeros(
+            7,
+            1,
+            1,
+            self.N_DIRECTIONS,
+            1,
+            1,
+        ))
+
+    def forward(self, data):
+        x, date, _ = data
+        B, _, H, W = x.shape
+        d = self.DIRECTIONS.to(x.device)
+        x = self.conv1(x)
+        x = self.dense(x)
+        x = self.conv2(self.relu1(x))
+        x = x.view(B, self.FUTURE, self.N_DIRECTIONS, H, W)
+        x = x + self.bias + self.bias_weekday[date.weekday()]
+        x = torch.softmax(x, dim=2)
+        x = (x * d.view(1, 1, self.N_DIRECTIONS, 1, 1)).sum(dim=2)
+        return x
