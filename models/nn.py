@@ -766,8 +766,9 @@ class Marcus(torch_nn.Module):
 
     DIRECTIONS = torch.tensor([0, 1, 85, 170, 255]).float() / 255
     N_DIRECTIONS = 5
+    EMB_DIM_IN = 2
 
-    def __init__(self, local_filt_params):
+    def __init__(self, local_filt_params, embed_in):
         super(Marcus, self).__init__()
         get_block_conv = lambda i, o: torch_nn.Conv2d(
             i,
@@ -778,10 +779,14 @@ class Marcus(torch_nn.Module):
             bias=True,
         )
         get_activ = lambda: torch_nn.ReLU()
+        if embed_in:
+            history = self.EMB_DIM_IN * self.HISTORY
+        else:
+            history = self.HISTORY
         self.temp_reg = build_uniform_network(
             get_block_conv,
             get_activ,
-            history=self.HISTORY,
+            history=history,
             future=self.N_DIRECTIONS * self.FUTURE,
             n_layers=self.N_LAYERS,
             n_channels=self.N_CHANNELS,
@@ -790,33 +795,64 @@ class Marcus(torch_nn.Module):
         self.local_filt = (
             torch_nn.Sequential(
                 GetLastChannels(local_filt_params["history"]),
-                Conv2dLocal(self.HEIGHT, self.WIDTH, local_filt_params["history"], local_filt_params["n_channels"], 5, padding=2),
+                get_block_conv(local_filt_params["history"], local_filt_params["n_channels"]),
                 torch_nn.ReLU(),
-                Conv2dLocal(self.HEIGHT, self.WIDTH, local_filt_params["n_channels"], local_filt_params["n_channels"], 3, padding=1),
+                Conv2dLocal(self.HEIGHT, self.WIDTH, local_filt_params["n_channels"], local_filt_params["n_channels"], 9, padding=4),
                 torch_nn.ReLU(),
-                get_block_conv(N, self.N_DIRECTIONS * self.FUTURE),
+                get_block_conv(local_filt_params["n_channels"], self.N_DIRECTIONS * self.FUTURE),
             )
             if local_filt_params["n_layers"] > 0
             else None
         )
+        # Embeddings
+        self.emb1 = (
+            torch.nn.Embedding(self.N_DIRECTIONS, self.EMB_DIM_IN)
+            if embed_in
+            else None
+        )
         self.bias = torch_nn.Parameter(torch.zeros(
             self.N_BATCHES,
-            self.FUTURE,
+            1, # self.FUTURE,
             self.N_DIRECTIONS,
             self.HEIGHT,
             self.WIDTH,
+        ))
+        self.bias_weekday = torch_nn.Parameter(torch.zeros(
+            7,
+            1,
+            1,
+            self.N_DIRECTIONS,
+            1,
+            1,
         ))
 
     def forward(self, data):
         x, date, _ = data
         B, _, H, W = x.shape
         d = self.DIRECTIONS.to(x.device)
-        out = self.temp_reg(x)
+        # Input embedding
+        if self.emb1 is not None:
+            out = self._embed_in(x)
+        else:
+            out = x
+        out = self.temp_reg(out)
         if self.local_filt is not None:
             out = out + self.local_filt(x)
         out = out.view(B, self.FUTURE, self.N_DIRECTIONS, H, W)
         out = out + self.bias
+        out = out + self.bias_weekday[date.weekday()]
         # out = torch.sigmoid(out)
         out = torch.softmax(out, dim=2)
         out = (out * d.view(1, 1, self.N_DIRECTIONS, 1, 1)).sum(dim=2)
         return out
+
+    def _embed_in(self, x):
+        d = self.DIRECTIONS.to(x.device)
+        y = torch.zeros(x.shape).long().to(x.device)
+        for i, v in enumerate(d):
+            y[x == v] = i
+        y = self.emb1(y)
+        y = y.permute(0, 1, 4, 2, 3)
+        B, T, C, H, W = y.shape
+        y = y.reshape(B, T * C, H, W)
+        return y
