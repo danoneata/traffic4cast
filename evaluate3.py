@@ -1,5 +1,6 @@
 import argparse
 import copy
+import json
 import os
 import pdb
 import sys
@@ -23,6 +24,8 @@ import ignite.engine as engine
 from models.nn import ignite_selected
 
 from constants import *
+
+from train import filter_dict
 
 
 def get_prediction_folder(split, model_name, city):
@@ -67,6 +70,14 @@ def main():
     parser.add_argument("--channels",
                         nargs='+',
                         help="List of channels to predict")
+    parser.add_argument(
+        "--hyper-params",
+        required=False,
+        help=(
+            "path to JSON file containing hyper-parameter configuration "
+            "(over-writes other hyper-parameters passed through the "
+            "command line)."),
+    )
     parser.add_argument("-v",
                         "--verbose",
                         action="count",
@@ -78,8 +89,12 @@ def main():
     if args.verbose:
         print(args)
 
+    if args.hyper_params and os.path.exists(args.hyper_params):
+        with open(args.hyper_params, "r") as f:
+            hyper_params = json.load(f)
+
     Model = MODELS[args.model]
-    model = Model()
+    model = Model(**filter_dict(hyper_params, "model"))
 
     loss = nn.MSELoss()
 
