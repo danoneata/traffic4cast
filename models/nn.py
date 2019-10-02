@@ -862,6 +862,109 @@ class Marcus(torch_nn.Module):
         return y
 
 
+class CalinaHeading(torch_nn.Module):
+
+    FUTURE = 3
+    HISTORY = 12
+    N_BATCHES = 5
+    N_CHANNELS = 16
+    N_LAYERS = 3
+    HEIGHT = 495
+    WIDTH = 436
+
+    DIRECTIONS = torch.tensor([0, 1, 85, 170, 255]).float() / 255
+    N_DIRECTIONS = 5
+
+    def __init__(self, temp_reg_params, biases_type):
+        super(CalinaHeading, self).__init__()
+        kernel_size = temp_reg_params["kernel_size"]
+        padding = (kernel_size - 1) // 2
+        get_block_conv = lambda i, o: torch_nn.Conv2d(
+            i,
+            o,
+            kernel_size=kernel_size,
+            stride=1,
+            padding=padding,
+            bias=True,
+        )
+        self.temp_reg = build_uniform_network(
+            get_block_conv,
+            lambda: self._get_activ(temp_reg_params["activation"]),
+            history=self.HISTORY,
+            future=self.N_DIRECTIONS * self.FUTURE,
+            n_layers=temp_reg_params["n_layers"],
+            n_channels=temp_reg_params["n_channels"],
+            out_activ=None,
+        )
+        # Biases
+        self.bias_location = torch_nn.ParameterList(self._get_bias_location(biases_type["location"]))
+        self.bias_weekday = self._get_bias_weekday(biases_type["weekday"])
+        self.bias_month = self._get_bias_month(biases_type["month"])
+
+    def forward(self, data):
+        x, date, _ = data
+        B, _, H, W = x.shape
+        dirs = self.DIRECTIONS.to(x.device)
+        dirs = dirs.view(1, 1, self.N_DIRECTIONS, 1, 1)
+        out = x
+        out = self.temp_reg(out)
+        out = out.view(B, self.FUTURE, self.N_DIRECTIONS, H, W)
+        # Add the biases
+        for b in self.bias_location:
+            out = out + b
+        if self.bias_weekday is not None:
+            out = out + self.bias_weekday[date.weekday()]
+        if self.bias_month is not None:
+            out = out + self.bias_month[date.month - 1]
+        out = torch.softmax(out, dim=2)
+        out = torch.sum(out * dirs, dim=2)
+        return out
+
+    def _get_activ(self, type1):
+        if type1 == "ReLU":
+            return torch_nn.ReLU()
+        elif type1 == "ELU":
+            return torch_nn.ELU()
+        elif type1 == "LeakyReLU":
+            return torch_nn.LeakyReLU()
+        elif type1 == "SELU":
+            return torch_nn.SELU()
+        else:
+            assert False, "Unknown type of activation"
+
+    def _get_bias_location(self, type1):
+        get_param = lambda *shape: torch_nn.Parameter(torch.zeros(*shape))
+        if type1 == "LxT":
+            return [get_param(self.N_BATCHES, 1, self.N_DIRECTIONS, self.HEIGHT, self.WIDTH)]
+        elif type1 == "L+T":
+            return [
+                get_param(1, 1, self.N_DIRECTIONS, self.HEIGHT, self.WIDTH),
+                get_param(self.N_BATCHES, 1, self.N_DIRECTIONS, 1, 1),
+            ]
+        else:
+            assert False, "Unknown type of bias"
+
+    def _get_bias_weekday(self, type1):
+        if type1 == "W":
+            return torch_nn.Parameter(torch.zeros(7, 1, self.N_DIRECTIONS, 1, 1))
+        elif type1 == "WxT":
+            return torch_nn.Parameter(torch.zeros(7, self.N_BATCHES, 1, self.N_DIRECTIONS, 1, 1))
+        elif type1 == "":
+            return None
+        else:
+            assert False, "Unknown type of bias"
+
+    def _get_bias_month(self, type1):
+        if type1 == "M":
+            return torch_nn.Parameter(torch.zeros(12, 1, self.N_DIRECTIONS, 1, 1))
+        elif type1 == "MxT":
+            return torch_nn.Parameter(torch.zeros(12, self.N_BATCHES, 1, self.N_DIRECTIONS, 1, 1))
+        elif type1 == "":
+            return None
+        else:
+            assert False, "Unknown type of bias"
+
+
 class Vicinius(torch_nn.Module):
 
     FUTURE = 3

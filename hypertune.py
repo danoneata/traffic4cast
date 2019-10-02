@@ -187,10 +187,94 @@ class PetroniusParamWorker(Worker):
         return cs
 
 
+class CalinaHeadingWorker(Worker):
+
+    def __init__(self, args_train, **kwargs):
+        super().__init__(**kwargs)
+        self.args_train = args_train
+
+    def compute(self, config, budget, *args, **kwargs):
+        """ The input parameter "config" (dictionary) contains the sampled
+        configurations passed by the bohb optimizer. """
+        config["trainer_run:max_epochs"] = budget
+        config["ignite_selected:epoch_fraction"] = 0.2
+        config_model = sorted(key for key in config.keys() if key.split(":")[0] == "model")
+        for k, g in groupby(config_model, key=lambda v: v.split(".")[0]):
+            config[k] = {}
+            for v in g:
+                _, u = v.split(".")
+                config[k][u] = config.pop(v)
+        try:
+            return train(self.args_train, config)
+        except Exception as e:
+            print(e)
+            return {
+                "loss": 1.0,
+                "info": str(e),
+            }
+
+    @staticmethod
+    def get_configspace():
+        """ It builds the configuration space with the needed hyperparameters.
+        It is easily possible to implement different types of hyperparameters.
+        Beside float-hyperparameters on a log scale, it is also able to handle
+        categorical input parameter.
+        :return: ConfigurationsSpace-Object
+        """
+        cs = CS.ConfigurationSpace()
+        cs.add_hyperparameters([
+            CSH.UniformFloatHyperparameter(
+                'optimizer:lr',
+                lower=0.001,
+                upper=0.01,
+                log=True,
+            ),
+            CSH.UniformIntegerHyperparameter(
+                'model:temp_reg_params.history',
+                lower=4,
+                upper=12,
+                default_value=12,
+            ),
+            CSH.UniformIntegerHyperparameter(
+                'model:temp_reg_params.n_layers',
+                lower=2,
+                upper=8,
+                default_value=3,
+            ),
+            CSH.OrdinalHyperparameter(
+                'model:temp_reg_params.n_channels',
+                sequence=[2, 4, 8, 16, 32],
+                default_value=8,
+            ),
+            CSH.OrdinalHyperparameter(
+                'model:temp_reg_params.kernel_size',
+                sequence=[1, 3, 5],
+                default_value=1,
+            ),
+            CSH.CategoricalHyperparameter(
+                'model:temp_reg_params.activation',
+                choices="ReLU ELU LeakyReLU SELU".split(),
+            ),
+            CSH.CategoricalHyperparameter(
+                'model:biases_type.location',
+                choices="LxT L+T".split(),
+            ),
+            CSH.CategoricalHyperparameter(
+                'model:biases_type.weekday',
+                choices=["", "W", "WxT"],
+            ),
+            CSH.CategoricalHyperparameter(
+                'model:biases_type.month',
+                choices=["", "M", "MxT"],
+            ),
+        ])
+        return cs
+
 
 WORKERS = {
     "calba": CalbaWorker,
     "petronius-param": PetroniusParamWorker,
+    "calina-heading": CalinaHeadingWorker,
 }
 
 
