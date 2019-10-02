@@ -1,0 +1,8 @@
+{
+    "model:local_filt_params": {
+        "history": 0,
+        "n_layers": 0,
+        "n_channels": 0
+    },
+    "model:embed_in": true
+}
