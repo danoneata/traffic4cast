@@ -1,22 +1,23 @@
 import argparse
+import pdb
 import numpy as np
 
 import plotly
 import plotly.graph_objs as go
 
 import hpbandster.core.result as hpres
-from hypertune import PyTorchWorker as worker
+from hypertune import WORKERS
 
-np.set_printoptions(precision=3, floatmode='fixed')
+np.set_printoptions(precision=3, floatmode="fixed")
 np.set_printoptions(suppress=True)
 np.core.arrayprint._line_width = 80
 
 
 def get_values(runs, id2config):
+    """Parse values from hyper-parameter results to lists. Needed for parallel
+    coordinates plot.
+
     """
-		Parse values from hyper-parameter results to lists. 
-		Needed for parallel coordinates plot.
-	"""
     values = {}
     values["loss"] = []
     max_loss = 99999
@@ -26,7 +27,7 @@ def get_values(runs, id2config):
             run.loss = max_loss
         values["loss"].append(run.loss)
 
-        config = id2config[run.config_id]['config']
+        config = id2config[run.config_id]["config"]
 
         for param in config:
             if not param in values:
@@ -36,43 +37,30 @@ def get_values(runs, id2config):
     return values
 
 
-def data_par_coords(values, columns):
-    config_space = worker.get_configspace()
-    # print(config_space)
-    # print(config_space.get_hyperparameter("optimizer_lr"))
-
-    KWARGS = {
-        "optimizer_lr": {
-            "label": 'Learning rate',
-            "range": [1e-6, 1e-1]
-        },
-        "loss": {
-            "label": 'Loss'
-        }
-    }
-
+def data_par_coords(Worker, values, columns, KWARGS):
     data = []
     for col in columns:
+        datum = {"values": values[col]}
+        datum.update({"label": col.split(":")[-1]})
         try:
-            datum = {"values": values[col]}
             datum.update(KWARGS[col])
-            data.append(datum)
         except KeyError:
             pass
+        data.append(datum)
     return data
 
 
 def main():
     """
-		load data from dir
-		print some stuff
-		generate and save par plot into temp-plot.html
-	"""
+    - load data from dir
+    - print some stuff
+    - generate and save par plot into temp-plot.html
+    """
     parser = argparse.ArgumentParser(
-        description='Plotting hyper-parameter tuning results')
-    parser.add_argument('--dir',
-                        type=str,
-                        help='A directory to load results from')
+        description="Plotting hyper-parameter tuning results"
+    )
+    parser.add_argument("-m", "--model-type", type=str, choices=WORKERS)
+    parser.add_argument("--dir", type=str, help="A directory to load results from")
     args = parser.parse_args()
 
     if args.dir is None:
@@ -86,27 +74,67 @@ def main():
     all_runs = res.get_all_runs()
     print(all_runs[0])
 
-    print('A total of %i unique configurations where sampled.' %
-          len(id2config.keys()))
-    print('A total of %i runs where executed.' % len(all_runs))
+    print("A total of %i unique configurations where sampled." % len(id2config.keys()))
+    print("A total of %i runs where executed." % len(all_runs))
+
+    Worker = WORKERS[args.model_type]
 
     values = get_values(all_runs, id2config)
-    all_columns = ['loss', 'optimizer_lr', 'blabla']
-    data = data_par_coords(values, all_columns)
+
+    config_space = Worker.get_configspace()
+    all_columns = [
+        h.name
+        for h in config_space.get_hyperparameters()
+        if not h.name.split(":")[-1].startswith("filt_1x1_params")
+    ]
+    all_columns.append("loss")
+
+    losses = values["loss"]
+    min_loss = min(losses)
+    max_loss = max(losses)
+    print(min_loss)
+
+    Δ_loss = max_loss - min_loss
+    KWARGS = {
+        "loss": {
+            "label": "loss",
+            "range": [min_loss - 0.01 * Δ_loss, min_loss * 0.1 + Δ_loss],
+        }
+    }
+
+    def remap(xs):
+        m = {v: i for i, v in enumerate(sorted(set(xs)))}
+        return [m[v] for v in xs]
+
+    # Special columns – map them to numeric values
+    special_columns = [
+        "model:biases_type.loctime",
+        "model:biases_type.month",
+        "model:biases_type.weekday",
+    ]
+    for k in special_columns:
+        KWARGS[k] = {
+            "tickvals": list(range(len(values[k]))),
+            "ticktext": sorted(set(values[k])),
+        }
+        values[k] = remap(values[k])
+
+    data = data_par_coords(Worker, values, all_columns, KWARGS)
 
     parcoord_data = [
         go.Parcoords(
             line=dict(
-                color='blue'
+                color="blue"
                 # colorscale = 'Jet',
                 # showscale = True,
                 # reversescale = True,
                 # cmin = 0,
                 # cmax = 1
             ),
-            labelfont=dict(size=20),
-            tickfont=dict(size=18),
-            dimensions=list(data))
+            labelfont=dict(size=12),
+            tickfont=dict(size=12),
+            dimensions=list(data),
+        )
     ]
 
     plotly.offline.plot(parcoord_data, auto_open=False)
