@@ -98,7 +98,7 @@ def main():
     KWARGS = {
         "loss": {
             "label": "loss",
-            "range": [min_loss - 0.01 * Δ_loss, min_loss * 0.1 + Δ_loss],
+            "range": [min_loss - 0.001 * Δ_loss, min_loss + 0.02 * Δ_loss],
         }
     }
 
@@ -109,10 +109,14 @@ def main():
     # Special columns – map them to numeric values
     special_columns = [
         "model:biases_type.loctime",
+        "model:biases_type.location",
         "model:biases_type.month",
         "model:biases_type.weekday",
+        "model:temp_reg_params.activation",
     ]
     for k in special_columns:
+        if k not in values:
+            continue
         KWARGS[k] = {
             "tickvals": list(range(len(values[k]))),
             "ticktext": sorted(set(values[k])),
