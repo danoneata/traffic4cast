@@ -14,4 +14,5 @@ MODELS = {
     "marcus": lambda *args, **kwargs: models.nn.TemporalDate(12, 3, 1, models.nn.Marcus(*args, **kwargs)),
     "vicinius": lambda *args, **kwargs: models.nn.TemporalDate(12, 3, 1, models.nn.Vicinius(*args, **kwargs)),
     "calina-heading": lambda *args, **kwargs: models.nn.TemporalDate(12, 3, 1, models.nn.CalinaHeading(*args, **kwargs)),
+    "nero": lambda *args, **kwargs: models.nn.TemporalDate(12, 3, 3, models.nn.Nero(*args, **kwargs)),
 }

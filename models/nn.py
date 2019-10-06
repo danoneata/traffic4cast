@@ -1012,3 +1012,101 @@ class Vicinius(torch_nn.Module):
         x = torch.softmax(x, dim=2)
         x = (x * d.view(1, 1, self.N_DIRECTIONS, 1, 1)).sum(dim=2)
         return x
+
+
+class Nero(torch_nn.Module):
+
+    FUTURE = 3
+    HISTORY = 12
+    N_LAYERS = 3
+    N_BATCHES = 5
+    N_CHANNELS = 3
+    HEIGHT = 495
+    WIDTH = 436
+
+    def __init__(self):
+        super(Nero, self).__init__()
+        self.filter_size = 3
+        self.filter_history = 3
+        self.filter_future = 1
+        get_block_conv = lambda i, o: torch_nn.Conv2d(
+            i,
+            o,
+            kernel_size=1,
+            stride=1,
+            padding=0,
+            bias=True,
+        )
+        get_activ = lambda: torch_nn.ELU()
+        self.temp_reg = build_uniform_network(
+            get_block_conv,
+            get_activ,
+            history=self.HISTORY * self.N_CHANNELS,
+            future=self.FUTURE * self.N_CHANNELS,
+            n_layers=5,
+            n_channels=16,
+            out_activ=None,
+        )
+        # self.filter_pred_1 = build_uniform_network(
+        #     get_block_conv,
+        #     get_activ,
+        #     history=self.filter_history * self.N_CHANNELS,
+        #     future=self.filter_size * self.filter_size * self.filter_history * self.N_CHANNELS * 2,
+        #     n_layers=5,
+        #     n_channels=16,
+        #     out_activ=None,
+        # )
+        # self.filter_pred_2 = build_uniform_network(
+        #     get_block_conv,
+        #     get_activ,
+        #     history=self.filter_history * self.N_CHANNELS,
+        #     future=self.filter_size * self.filter_size * 2 * self.N_CHANNELS * self.filter_future,
+        #     n_layers=5,
+        #     n_channels=16,
+        #     out_activ=None,
+        # )
+        self.bias_location = torch_nn.Parameter(torch.zeros(
+            self.N_BATCHES,
+            1,
+            self.N_CHANNELS,
+            self.HEIGHT,
+            self.WIDTH,
+        ))
+        self.bias_weekday = torch_nn.Parameter(torch.zeros(
+            7,
+            1,
+            1,
+            self.N_CHANNELS,
+            1,
+            1,
+        ))
+
+    def forward(self, data):
+        x, date, _ = data
+        # y = self._select_last(x, self.filter_history)
+        # w1 = self.filter_pred_1(y)  # Predict local filter weights.
+        # w2 = self.filter_pred_2(y)  # Predict local filter weights.
+        # f = self._apply_filter(y, w1, self.filter_history * self.N_CHANNELS, 2)
+        # f = torch.relu(f)
+        # f = self._apply_filter(f, w2, 2, self.filter_future * self.N_CHANNELS)
+        # f = f.view(self.N_BATCHES, self.filter_future, self.N_CHANNELS, self.HEIGHT, self.WIDTH)
+        t = self.temp_reg(x).view(self.N_BATCHES, self.FUTURE, self.N_CHANNELS, self.HEIGHT, self.WIDTH)
+        out = t + self.bias_location + self.bias_weekday[date.weekday()]
+        # out = torch.sigmoid(out)
+        out = out.view(self.N_BATCHES, self.FUTURE * self.N_CHANNELS, self.HEIGHT, self.WIDTH)
+        return out
+
+    def _select_last(self, x, t):
+        # Selects last `t` frames.
+        y = x.view(self.N_BATCHES, self.HISTORY, self.N_CHANNELS, self.HEIGHT, self.WIDTH)
+        y = y[:, -t:]
+        y = y.view(self.N_BATCHES, self.filter_history * self.N_CHANNELS, self.HEIGHT, self.WIDTH)
+        return y
+
+    def _apply_filter(self, y, w, i, o):
+        # Apply filter weights to data.
+        y = F.unfold(y, self.filter_size, padding=1)
+        w = w.view(self.N_BATCHES, self.filter_size * self.filter_size * i, o, self.HEIGHT * self.WIDTH)
+        f = torch.einsum("bfs, bfos -> bos", y, w)
+        f = f.view(self.N_BATCHES, o, self.HEIGHT, self.WIDTH)
+        return f
