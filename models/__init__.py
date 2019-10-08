@@ -16,3 +16,9 @@ MODELS = {
     "calina-heading": lambda *args, **kwargs: models.nn.TemporalDate(12, 3, 1, models.nn.CalinaHeading(*args, **kwargs)),
     "nero": lambda *args, **kwargs: models.nn.TemporalDate(12, 3, 3, models.nn.Nero(*args, **kwargs)),
 }
+
+for l in (4, 8, 16):
+    for c in (16, 32, 64):
+        k = f"nero-{l}-{c}"
+        t = dict(n_channels=c, n_layers=l)
+        MODELS[k] = lambda *args, **kwargs: models.nn.TemporalDate(12, 3, 3, models.nn.Nero(*args, temp_reg_params=t, **kwargs))

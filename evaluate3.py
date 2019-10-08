@@ -92,6 +92,8 @@ def main():
     if args.hyper_params and os.path.exists(args.hyper_params):
         with open(args.hyper_params, "r") as f:
             hyper_params = json.load(f)
+    else:
+        hyper_params = {}
 
     Model = MODELS[args.model]
     model = Model(**filter_dict(hyper_params, "model"))
