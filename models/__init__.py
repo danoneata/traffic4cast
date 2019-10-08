@@ -21,4 +21,6 @@ for l in (4, 8, 16):
     for c in (16, 32, 64):
         k = f"nero-{l}-{c}"
         t = dict(n_channels=c, n_layers=l)
-        MODELS[k] = lambda *args, **kwargs: models.nn.TemporalDate(12, 3, 3, models.nn.Nero(*args, temp_reg_params=t, **kwargs))
+        # `t=t` is a hack to circumvent Python broken scoping;
+        # see http://math.andrej.com/2009/04/09/pythons-lambda-is-broken/
+        MODELS[k] = lambda *args, t=t, **kwargs: models.nn.TemporalDate(12, 3, 3, models.nn.Nero(*args, temp_reg_params=t, **kwargs))
