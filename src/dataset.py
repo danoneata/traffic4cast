@@ -20,6 +20,10 @@ def path_to_date(path: str) -> datetime.datetime:
         os.path.basename(path).split('_')[0], '%Y%m%d')
 
 
+def date_to_path(date: datetime.datetime) -> str:
+    return date.strftime("%Y%m%d") + "_100m_bins.h5"
+
+
 class Traffic4CastSample(object):
     """ Traffic4cast data wrapper.
 
