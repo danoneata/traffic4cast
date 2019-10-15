@@ -1077,6 +1077,88 @@ class Nero(torch_nn.Module):
         return out
 
 
+class Nero3(torch_nn.Module):
+
+    FUTURE = 3
+    HISTORY = 12
+    N_LAYERS = 3
+    N_BATCHES = 5
+    N_CHANNELS = 3
+    HEIGHT = 495
+    WIDTH = 436
+
+    def __init__(self):
+        super(Nero3, self).__init__()
+        temp_reg_params = {
+            "n_layers": 8,
+            "n_channels": 32,
+        }
+        get_block_conv = lambda i, o, k=1: torch_nn.Conv2d(
+            i,
+            o,
+            kernel_size=k,
+            stride=1,
+            padding=(k - 1) // 2,
+            bias=True,
+        )
+        get_activ = lambda: torch_nn.ELU()
+        self.temp_reg = build_uniform_network(
+            get_block_conv,
+            get_activ,
+            history=self.HISTORY * self.N_CHANNELS,
+            future=self.FUTURE * self.N_CHANNELS,
+            n_layers=temp_reg_params["n_layers"],
+            n_channels=temp_reg_params["n_channels"],
+            out_activ=None,
+        )
+        self.bias_location = torch_nn.Parameter(torch.zeros(
+            self.N_BATCHES,
+            1,
+            self.N_CHANNELS,
+            self.HEIGHT,
+            self.WIDTH,
+        ))
+        self.bias_month = torch_nn.Parameter(torch.zeros(
+            12,
+            1,
+            1,
+            self.N_CHANNELS,
+            1,
+            1,
+        ))
+        self.bias_weekday = torch_nn.Parameter(torch.zeros(
+            7,
+            self.N_BATCHES,
+            1,
+            self.N_CHANNELS,
+            1,
+            1,
+        ))
+        self.local_filt = torch_nn.Sequential(
+            get_block_conv(3, 2),
+            torch_nn.ReLU(),
+            Conv2dLocal(self.HEIGHT, self.WIDTH, 2, 2, 5, padding=2),
+            torch_nn.ReLU(),
+            Conv2dLocal(self.HEIGHT, self.WIDTH, 2, 2, 5, padding=2),
+            torch_nn.ReLU(),
+            Conv2dLocal(self.HEIGHT, self.WIDTH, 2, 2, 5, padding=2),
+            torch_nn.ReLU(),
+            Conv2dLocal(self.HEIGHT, self.WIDTH, 2, 2, 5, padding=2),
+            torch_nn.ReLU(),
+            get_block_conv(2, self.N_CHANNELS * self.FUTURE),
+        )
+
+    def forward(self, data):
+        x, date, _ = data
+        t = self.temp_reg(x).view(self.N_BATCHES, self.FUTURE, self.N_CHANNELS, self.HEIGHT, self.WIDTH)
+        y = x.reshape(self.N_BATCHES, -1, self.N_CHANNELS, self.HEIGHT, self.WIDTH)
+        y = y[:, -1]
+        s = self.local_filt(y).view(self.N_BATCHES, self.FUTURE, self.N_CHANNELS, self.HEIGHT, self.WIDTH)
+        out = t + s + self.bias_location + self.bias_weekday[date.weekday()] + self.bias_month[date.month - 1]
+        out = out.view(self.N_BATCHES, self.FUTURE * self.N_CHANNELS, self.HEIGHT, self.WIDTH)
+        return out
+
+
 class Nero2(torch_nn.Module):
 
     FUTURE = 3
