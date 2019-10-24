@@ -51,7 +51,11 @@ def main():
                         help="overwrite existing predictions if they exist")
     parser.add_argument("--channels",
                         nargs='+',
+                        default=["Volume", "Speed", "Heading"],
                         help="List of channels to predict")
+    parser.add_argument("--tablefmt",
+                        default="github",
+                        help="how to format the results")
     parser.add_argument("-v",
                         "--verbose",
                         action="count",
@@ -139,7 +143,7 @@ def main():
     dirname = get_prediction_folder(args.split, model_name, args.city)
     os.makedirs(dirname, exist_ok=True)
 
-    to_str = lambda v: f"{v:7.5f}"
+    to_str = lambda v: f"{v:.4f}"
 
     errors = []
     for sample in loader:
@@ -172,7 +176,7 @@ def main():
                  [to_str(v) for v in errors.mean(axis=0).tolist()] +
                  [to_str(errors.mean())]]
         headers = ["model"] + CHANNELS + ["mean"]
-        print(tabulate(table, headers=headers, tablefmt="github"))
+        print(tabulate(table, headers=headers, tablefmt=args.tablefmt))
 
 
 if __name__ == "__main__":
