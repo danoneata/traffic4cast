@@ -4,6 +4,9 @@ import numpy as np
 
 import plotly
 import plotly.graph_objs as go
+import plotly.io as pio
+
+from plotly.offline import init_notebook_mode, iplot, plot
 
 import hpbandster.core.result as hpres
 from hypertune import WORKERS
@@ -94,13 +97,31 @@ def main():
     max_loss = max(losses)
     print(min_loss)
 
+    range_max = sorted(losses)[5]
+
     Δ_loss = max_loss - min_loss
     KWARGS = {
         "loss": {
             "label": "loss",
-            "range": [min_loss - 0.001 * Δ_loss, min_loss + 0.02 * Δ_loss],
-        }
+            "range": [min_loss - 0.001 * Δ_loss, min_loss + 0.1 * Δ_loss],
+            "constraintrange": [min_loss - 0.001 * Δ_loss, range_max],
+        },
+        "model:biases_type.loctime": {"label": "bias"},
+        "model:biases_type.location": {"label": "bias"},
+        "model:biases_type.month": {"label": "bias"},
+        "model:biases_type.weekday": {"label": "bias"},
+        "model:temp_reg_params.activation": {"label": "activation"},
+        "model:temp_reg_params.history": {"label": "history"},
+        "model:temp_reg_params.kernel_size": {"label": "kernel"},
+        "model:temp_reg_params.n_layers": {"label": "n. layers"},
+        "model:temp_reg_params.n_channels": {"label": "n. channels"},
     }
+
+    def rename_labels(k):
+        if k in "LxT L+T MxT WxT".split():
+            return k.replace("T", "H")
+        else:
+            return k
 
     def remap(xs):
         m = {v: i for i, v in enumerate(sorted(set(xs)))}
@@ -117,10 +138,14 @@ def main():
     for k in special_columns:
         if k not in values:
             continue
-        KWARGS[k] = {
+        d = {
             "tickvals": list(range(len(values[k]))),
-            "ticktext": sorted(set(values[k])),
+            "ticktext": list(map(rename_labels, sorted(set(values[k])))),
         }
+        try:
+            KWARGS[k].update(d)
+        except KeyError:
+            KWARGS[k] = d
         values[k] = remap(values[k])
 
     data = data_par_coords(Worker, values, all_columns, KWARGS)
@@ -141,7 +166,14 @@ def main():
         )
     ]
 
-    plotly.offline.plot(parcoord_data, auto_open=False)
+    plotly.offline.plot(
+        parcoord_data,
+        auto_open=False,
+        image_filename="testfig",
+        image="svg",
+        image_height=300,
+        image_width=750,
+    )
 
 
 if __name__ == "__main__":
