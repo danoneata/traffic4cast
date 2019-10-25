@@ -154,10 +154,13 @@ def main():
     def get_path(date):
         return os.path.join(dirname, src.dataset.date_to_path(date))
 
+    outputs = []
+
     for batch in ignite_selected(loader, slice_size=slice_size):
         output = _inference(batch)
         curr_loss = loss(round_torch(output[0]), output[1]).item()
         losses.append(curr_loss)
+        outputs.append(output)
         if not os.path.exists(get_path(batch[1])) or args.overwrite:
             path = get_path(batch[1])
             data = to_uint8(output[0])
@@ -170,6 +173,19 @@ def main():
         # sys.exit()
 
     print(to_str(np.mean(losses)))
+
+    if args.verbose:
+        # Show per channel results.
+        S = 5, 3, 3, 495, 436
+        pred = torch.stack([p.view(*S) for p, _ in outputs])
+        pred = round_torch(pred)
+        true = torch.stack([t.view(*S) for _, t in outputs])
+        diff = (pred - true) ** 2
+        diff = diff.mean(dim=(0, 1, 2, 4, 5))
+        rows = [
+            [f"{v:.4f}" for v in diff.cpu().numpy()] + ["{:.4f}".format(diff.mean().item())]
+        ]
+        print(tabulate(rows, tablefmt="latex"))
 
 
 if __name__ == "__main__":
