@@ -25,3 +25,9 @@ for l in (4, 8, 16):
         # `t=t` is a hack to circumvent Python broken scoping;
         # see http://math.andrej.com/2009/04/09/pythons-lambda-is-broken/
         MODELS[k] = lambda *args, t=t, **kwargs: models.nn.TemporalDate(12, 3, 3, models.nn.Nero(*args, temp_reg_params=t, **kwargs))
+
+# Best models without biases – for comparison purposes.
+for l, c in [(8, 32), (8, 64), (4, 64)]:
+    k = f"nero-{l}-{c}-nobias"
+    t = dict(n_channels=c, n_layers=l)
+    MODELS[k] = lambda *args, t=t, **kwargs: models.nn.TemporalDate(12, 3, 3, models.nn.Nero(*args, temp_reg_params=t, use_biases=False, **kwargs))

@@ -1025,7 +1025,7 @@ class Nero(torch_nn.Module):
     HEIGHT = 495
     WIDTH = 436
 
-    def __init__(self, temp_reg_params):
+    def __init__(self, temp_reg_params, use_biases=True):
         super(Nero, self).__init__()
         get_block_conv = lambda i, o, k=1: torch_nn.Conv2d(
             i,
@@ -1036,6 +1036,7 @@ class Nero(torch_nn.Module):
             bias=True,
         )
         get_activ = lambda: torch_nn.ELU()
+        self.use_biases = use_biases
         self.temp_reg = build_uniform_network(
             get_block_conv,
             get_activ,
@@ -1045,34 +1046,42 @@ class Nero(torch_nn.Module):
             n_channels=temp_reg_params["n_channels"],
             out_activ=None,
         )
-        self.bias_location = torch_nn.Parameter(torch.zeros(
-            self.N_BATCHES,
-            1,
-            self.N_CHANNELS,
-            self.HEIGHT,
-            self.WIDTH,
-        ))
-        self.bias_month = torch_nn.Parameter(torch.zeros(
-            12,
-            1,
-            1,
-            self.N_CHANNELS,
-            1,
-            1,
-        ))
-        self.bias_weekday = torch_nn.Parameter(torch.zeros(
-            7,
-            self.N_BATCHES,
-            1,
-            self.N_CHANNELS,
-            1,
-            1,
-        ))
+        if use_biases:
+            self.bias_location = torch_nn.Parameter(torch.zeros(
+                self.N_BATCHES,
+                1,
+                self.N_CHANNELS,
+                self.HEIGHT,
+                self.WIDTH,
+            ))
+            self.bias_month = torch_nn.Parameter(torch.zeros(
+                12,
+                1,
+                1,
+                self.N_CHANNELS,
+                1,
+                1,
+            ))
+            self.bias_weekday = torch_nn.Parameter(torch.zeros(
+                7,
+                self.N_BATCHES,
+                1,
+                self.N_CHANNELS,
+                1,
+                1,
+            ))
 
     def forward(self, data):
         x, date, _ = data
-        t = self.temp_reg(x).view(self.N_BATCHES, self.FUTURE, self.N_CHANNELS, self.HEIGHT, self.WIDTH)
-        out = t + self.bias_location + self.bias_weekday[date.weekday()] + self.bias_month[date.month - 1]
+        out = self.temp_reg(x)
+        out = out.view(self.N_BATCHES, self.FUTURE, self.N_CHANNELS, self.HEIGHT, self.WIDTH)
+        if self.use_biases:
+            out = (
+                out +
+                self.bias_location +
+                self.bias_weekday[date.weekday()] +
+                self.bias_month[date.month - 1]
+            )
         out = out.view(self.N_BATCHES, self.FUTURE * self.N_CHANNELS, self.HEIGHT, self.WIDTH)
         return out
 
